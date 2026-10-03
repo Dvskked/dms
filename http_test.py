@@ -8,6 +8,7 @@ Levanta el servidor en un hilo, pide las rutas clave y comprueba:
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -40,15 +41,25 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 OPENER = urllib.request.build_opener(NoRedirect)
 
-ROUTES = [
-    "/", "/auth/login", "/auth/register",
+# Rutas publicas: se esperan sin sesion. La liga exige cuenta, asi que "/" y
+# "/sugerencias" deben contestar 302 hacia el login.
+PUBLIC_ROUTES = ["/auth/login", "/auth/register", "/auth/recuperar", "/health"]
+GATED_ROUTES = ["/", "/estadisticas", "/sugerencias"]
+ADMIN_ROUTES = [
     "/admin/", "/admin/noticias/", "/admin/reglas/", "/admin/sanciones/",
     "/admin/salas/nuevo", "/admin/usuarios/nuevo", "/admin/ajustes",
 ]
 
+ROUTES: list[tuple[str, int]] = (
+    [(route, 200) for route in PUBLIC_ROUTES]
+    + [(route, 302) for route in GATED_ROUTES]
+    + [(route, 302) for route in ADMIN_ROUTES]
+)
+
+JSON_ROUTES = {"/health"}
+
 failures: list[str] = []
-for route in ROUTES:
-    expected = 302 if route.startswith("/admin") else 200
+for route, expected in ROUTES:
     try:
         with OPENER.open(BASE + route) as response:
             status, body = response.status, response.read().decode("utf-8", "replace")
@@ -64,6 +75,16 @@ for route in ROUTES:
 
     if status != 200:
         print(f"[OK ] {status} {route}")
+        continue
+
+    if route in JSON_ROUTES:
+        try:
+            json.loads(body)
+        except ValueError:
+            failures.append(f"{route} -> no devuelve JSON valido")
+            print(f"[FAIL] 200 {route} -> JSON invalido")
+        else:
+            print(f"[OK ] 200 {route} (JSON)")
         continue
 
     checks = {

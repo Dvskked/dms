@@ -8,8 +8,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Optional
 
-from flask_login import UserMixin
-from sqlalchemy import CheckConstraint, Index, UniqueConstraint
+from flask_login import AnonymousUserMixin, UserMixin
+from sqlalchemy import CheckConstraint, Index, UniqueConstraint, func
 
 from extensions import db, login_manager
 from utils import hash_password, slugify, utcnow, verify_password
@@ -105,6 +105,21 @@ class User(UserMixin, TimestampMixin, db.Model):
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<User {self.username} role={self.role}>"
+
+
+class AnonymousUser(AnonymousUserMixin):
+    """Visitante sin sesion: expone los mismos atributos que `User`.
+
+    Sin esto, `current_user.is_staff` revienta con AttributeError en las
+    plantillas y vistas que lo consultan sin comprobar antes `is_authenticated`.
+    """
+
+    is_admin = False
+    is_premium = False
+    is_staff = False
+
+
+login_manager.anonymous_user = AnonymousUser
 
 
 @login_manager.user_loader
@@ -245,6 +260,8 @@ class Team(TimestampMixin, db.Model):
 
     division = db.relationship("Division", back_populates="teams")
     players = db.relationship("Player", back_populates="team", cascade="all, delete-orphan", lazy="selectin")
+    match_stats = db.relationship("PlayerMatchStat", back_populates="team", cascade="all, delete-orphan",
+                                  lazy="selectin")
 
     def __init__(self, **kwargs):
         kwargs.setdefault("slug", slugify(kwargs.get("name", "equipo")))
@@ -260,8 +277,31 @@ class Team(TimestampMixin, db.Model):
         return self.crest or "img/logo-mark.png"
 
     @property
+    def has_crest(self) -> bool:
+        return bool(self.crest)
+
+    @property
     def player_count(self) -> int:
         return len([p for p in self.players if p.is_active])
+
+    @property
+    def squad_size(self) -> int:
+        return len(self.players or [])
+
+    @property
+    def totals(self) -> dict:
+        """Suma de la liga para el equipo (goles, asistencias, CS, autogoles)."""
+        rows = {"goals": 0, "assists": 0, "clean_sheets": 0, "own_goals": 0,
+                "yellow_cards": 0, "red_cards": 0, "matches": 0}
+        for stat in self.match_stats or []:
+            rows["goals"] += stat.goals or 0
+            rows["assists"] += stat.assists or 0
+            rows["clean_sheets"] += stat.clean_sheets or 0
+            rows["own_goals"] += stat.own_goals or 0
+            rows["yellow_cards"] += stat.yellow_cards or 0
+            rows["red_cards"] += stat.red_cards or 0
+        rows["matches"] = len({s.match_id for s in (self.match_stats or [])})
+        return rows
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Team {self.name}>"
@@ -291,9 +331,27 @@ class Player(TimestampMixin, db.Model):
 
     team = db.relationship("Team", back_populates="players")
 
+    match_stats = db.relationship(
+        "PlayerMatchStat", back_populates="player",
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+
     @property
     def display(self) -> str:
         return self.username
+
+    @property
+    def position_label(self) -> str:
+        return {"GK": "Portero", "DF": "Defensa", "MF": "Medio", "MC": "Mediocampo",
+                "FW": "Delantero"}.get(self.position, self.position or "—")
+
+    @property
+    def goals_per_match(self) -> float:
+        return round((self.goals or 0) / self.matches, 2) if self.matches else 0.0
+
+    @property
+    def contribution(self) -> int:
+        return (self.goals or 0) * 2 + (self.assists or 0)
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Player {self.username}>"
@@ -358,6 +416,16 @@ class Match(TimestampMixin, db.Model):
     away_team = db.relationship("Team", foreign_keys=[away_team_id], lazy="joined")
     division = db.relationship("Division", lazy="joined")
 
+    report = db.relationship(
+        "MatchReport", back_populates="match", uselist=False,
+        cascade="all, delete-orphan", lazy="selectin",
+    )
+    player_stats = db.relationship(
+        "PlayerMatchStat", back_populates="match",
+        cascade="all, delete-orphan", lazy="selectin",
+        order_by="PlayerMatchStat.goals.desc(), PlayerMatchStat.player_id",
+    )
+
     __table_args__ = (
         Index("ix_match_division_journey", "division_id", "journey"),
         CheckConstraint("status in ('scheduled','live','finished','wo','postponed')", name="status_valid"),
@@ -373,6 +441,13 @@ class Match(TimestampMixin, db.Model):
             return "vs"
         return f"{self.home_score} - {self.away_score}"
 
+    @property
+    def headline(self) -> str:
+        """'LOS DIAMONDS 3 - 1 RIVER FC' para listados y cabeceras."""
+        home = self.home_team.name if self.home_team else "Local"
+        away = self.away_team.name if self.away_team else "Visitante"
+        return f"{home} {self.score_text} {away}"
+
     def result_for(self, team_id: int) -> Optional[str]:
         if not self.is_finished:
             return None
@@ -384,8 +459,198 @@ class Match(TimestampMixin, db.Model):
             return "W"
         return "D" if self.home_score == self.away_score else "L"
 
+    # -- Informe ----------------------------------------------------------- #
+    def stats_for(self, team_id: int) -> list["PlayerMatchStat"]:
+        return [s for s in (self.player_stats or []) if s.team_id == team_id]
+
+    @property
+    def has_report(self) -> bool:
+        return self.report is not None and bool(self.report.has_content)
+
+    def _goals_for(self, team_id: int) -> int:
+        """Goles a favor de `team_id` segun las fichas de los jugadores.
+
+        Los autogoles se anotan al jugador que los cometio (para sus
+        estadisticas) pero el gol suma al equipo contrario.
+        """
+        stats = self.player_stats or []
+        scored = sum(s.goals or 0 for s in stats if s.team_id == team_id)
+        rival_own = sum(s.own_goals or 0 for s in stats if s.team_id != team_id)
+        return scored + rival_own
+
+    @property
+    def home_goals_from_stats(self) -> int:
+        """Goles del local = goles de sus jugadores + autogoles del rival."""
+        return self._goals_for(self.home_team_id)
+
+    @property
+    def away_goals_from_stats(self) -> int:
+        """Goles del visitante = goles de sus jugadores + autogoles del local."""
+        return self._goals_for(self.away_team_id)
+
+    @property
+    def scorers(self) -> list["PlayerMatchStat"]:
+        return [s for s in (self.player_stats or []) if s.goals or s.own_goals]
+
     def __repr__(self) -> str:  # pragma: no cover
         return f"<Match J{self.journey} {self.home_team_id} vs {self.away_team_id}>"
+
+
+class MatchReport(TimestampMixin, db.Model):
+    """Informe de un partido: foto, resultado y lectura del juego.
+
+    Es 1:1 con Match. Lo edita el staff desde /admin/partidos/<id>/informe.
+    """
+    __tablename__ = "match_reports"
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id", ondelete="CASCADE"),
+                         nullable=False, unique=True, index=True)
+
+    photo = db.Column(db.String(255))            # foto del partido
+    photo_credit = db.Column(db.String(120))
+    headline = db.Column(db.String(180))         # "Goleada en la jornada 5"
+    summary = db.Column(db.String(400))
+    body = db.Column(db.Text)                    # cronica / analisis
+    video_url = db.Column(db.String(255))
+
+    mvp_player_id = db.Column(db.Integer, db.ForeignKey("players.id", ondelete="SET NULL"),
+                              nullable=True, index=True)
+    author_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    is_published = db.Column(db.Boolean, nullable=False, default=False, index=True)
+
+    match = db.relationship("Match", back_populates="report")
+    mvp = db.relationship("Player", lazy="joined")
+    author = db.relationship("User", lazy="joined")
+
+    @property
+    def has_content(self) -> bool:
+        return bool(self.photo or self.headline or self.summary or self.body)
+
+    @property
+    def photo_url(self) -> str | None:
+        return self.photo
+
+    @property
+    def author_label(self) -> str:
+        return self.author.label if self.author else "Redaccion de la liga"
+
+    @property
+    def stats(self) -> list["PlayerMatchStat"]:
+        return list(self.match.player_stats or []) if self.match else []
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<MatchReport match={self.match_id}>"
+
+
+class PlayerMatchStat(TimestampMixin, db.Model):
+    """Estadistica individual de UN jugador en UN partido.
+
+    Es la fuente de verdad de los goles, asistencias, clean sheets y
+    autogoles; `Player.goals` etc. son el acumulado que se recalcula desde aqui.
+    """
+    __tablename__ = "player_match_stats"
+
+    id = db.Column(db.Integer, primary_key=True)
+    match_id = db.Column(db.Integer, db.ForeignKey("matches.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    player_id = db.Column(db.Integer, db.ForeignKey("players.id", ondelete="CASCADE"),
+                          nullable=False, index=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+
+    goals = db.Column(db.Integer, nullable=False, default=0)
+    assists = db.Column(db.Integer, nullable=False, default=0)
+    clean_sheets = db.Column(db.Integer, nullable=False, default=0)   # CS / vallas invictas
+    clean_sheet_seconds = db.Column(db.Integer, nullable=False, default=0)
+    own_goals = db.Column(db.Integer, nullable=False, default=0)      # autogoles
+    yellow_cards = db.Column(db.Integer, nullable=False, default=0)
+    red_cards = db.Column(db.Integer, nullable=False, default=0)
+    minutes = db.Column(db.Integer, nullable=False, default=0)
+    is_mvp = db.Column(db.Boolean, nullable=False, default=False)
+    note = db.Column(db.String(160))
+
+    match = db.relationship("Match", back_populates="player_stats")
+    player = db.relationship("Player", lazy="joined")
+    team = db.relationship("Team", lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("match_id", "player_id", name="uq_stat_match_player"),
+        Index("ix_stat_player_match", "player_id", "match_id"),
+    )
+
+    @property
+    def team_is_home(self) -> bool:
+        return bool(self.match and self.team_id == self.match.home_team_id)
+
+    @property
+    def contribution(self) -> int:
+        """Goles x2 + asistencias: metrica para ordenar las contribuciones."""
+        return (self.goals or 0) * 2 + (self.assists or 0)
+
+    def apply_to(self, player: Player) -> None:
+        player.matches = (player.matches or 0) + 1
+        player.goals = (player.goals or 0) + (self.goals or 0)
+        player.assists = (player.assists or 0) + (self.assists or 0)
+        player.clean_sheets = (player.clean_sheets or 0) + (self.clean_sheets or 0)
+        player.clean_sheet_seconds = (player.clean_sheet_seconds or 0) + (self.clean_sheet_seconds or 0)
+        player.own_goals = (player.own_goals or 0) + (self.own_goals or 0)
+        player.yellow_cards = (player.yellow_cards or 0) + (self.yellow_cards or 0)
+        player.red_cards = (player.red_cards or 0) + (self.red_cards or 0)
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<PlayerMatchStat p{self.player_id} m{self.match_id} g{self.goals}>"
+
+
+class PasswordResetToken(TimestampMixin, db.Model):
+    """Token de un solo uso para restablecer la contrasena por correo."""
+    __tablename__ = "password_reset_tokens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    token_hash = db.Column(db.String(128), nullable=False, unique=True, index=True)
+    expires_at = db.Column(db.DateTime, nullable=False, index=True)
+    used_at = db.Column(db.DateTime)
+    requested_ip = db.Column(db.String(45))
+
+    user = db.relationship("User", lazy="joined")
+
+    @property
+    def is_usable(self) -> bool:
+        return self.used_at is None and self.expires_at > utcnow()
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<PasswordResetToken user={self.user_id} usable={self.is_usable}>"
+
+
+class EmailLog(TimestampMixin, db.Model):
+    """Historial de correos enviados (bienvenida, contrasena, avisos)."""
+    __tablename__ = "email_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"),
+                        nullable=True, index=True)
+    to_email = db.Column(db.String(160), nullable=False, index=True)
+    subject = db.Column(db.String(180), nullable=False)
+    template = db.Column(db.String(40), nullable=False, default="general", index=True)
+    status = db.Column(db.String(16), nullable=False, default="sent", index=True)  # sent|failed|skipped
+    error = db.Column(db.String(255))
+    sent_at = db.Column(db.DateTime, default=utcnow, index=True)
+
+    user = db.relationship("User", lazy="joined")
+
+    @property
+    def status_label(self) -> str:
+        return {"sent": "Enviado", "failed": "Fallido", "skipped": "Omitido"}.get(self.status, self.status)
+
+    @property
+    def target(self) -> str:
+        return self.user.label if self.user else (self.to_email or "—")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<EmailLog {self.template}->{self.to_email} {self.status}>"
 
 
 # --------------------------------------------------------------------------- #
@@ -908,6 +1173,97 @@ def log_activity(user, action: str, entity: str, entity_id: int | None = None, d
     )
 
 
+# --------------------------------------------------------------------------- #
+# Sugerencias de los jugadores
+# --------------------------------------------------------------------------- #
+class SuggestionStatus:
+    """Estados por los que pasa un mensaje del canal de sugerencias."""
+
+    NEW = "new"
+    REVIEWING = "reviewing"
+    DONE = "done"
+
+    ALL = (NEW, REVIEWING, DONE)
+    LABELS = {NEW: "Nueva", REVIEWING: "En estudio", DONE: "Aplicada"}
+
+
+#: Categorias ofrecidas en el formulario de sugerencias.
+SUGGESTION_CATEGORIES = {
+    "idea": "Idea nueva",
+    "mejora": "Mejora de la pagina",
+    "liga": "Liga y reglamento",
+    "error": "Algo no funciona",
+    "otro": "Otro",
+}
+
+
+class Suggestion(TimestampMixin, db.Model):
+    """Mensajes del foro de sugerencias: quien lo escribe y que dice."""
+    __tablename__ = "suggestions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    category = db.Column(db.String(30), nullable=False, default="idea", index=True)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(16), nullable=False, default=SuggestionStatus.NEW, index=True)
+    staff_reply = db.Column(db.Text)
+    replied_at = db.Column(db.DateTime)
+    replied_by_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="SET NULL"),
+                              nullable=True)
+    likes = db.Column(db.Integer, nullable=False, default=0)
+
+    author = db.relationship("User", foreign_keys=[user_id], lazy="joined")
+    staff = db.relationship("User", foreign_keys=[replied_by_id], lazy="joined")
+
+    __table_args__ = (
+        CheckConstraint("status in ('new','reviewing','done')", name="suggestion_status_valid"),
+        Index("ix_suggestions_created_status", "created_at", "status"),
+    )
+
+    @property
+    def status_label(self) -> str:
+        return SuggestionStatus.LABELS.get(self.status, self.status)
+
+    @property
+    def author_label(self) -> str:
+        return self.author.label if self.author else "Jugador eliminado"
+
+    @property
+    def category_label(self) -> str:
+        return SUGGESTION_CATEGORIES.get(self.category, self.category)
+
+    @property
+    def excerpt(self) -> str:
+        clean = " ".join((self.body or "").split())
+        return clean[:180] + ("..." if len(clean) > 180 else "")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<Suggestion #{self.id} {self.category} by user {self.user_id} {self.status}>"
+
+
+class SuggestionVote(TimestampMixin, db.Model):
+    """Un voto por usuario y sugerencia: el contador nunca se infla solo."""
+    __tablename__ = "suggestion_votes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    suggestion_id = db.Column(db.Integer, db.ForeignKey("suggestions.id", ondelete="CASCADE"),
+                              nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+
+    suggestion = db.relationship("Suggestion", lazy="joined")
+    user = db.relationship("User", lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("suggestion_id", "user_id", name="uq_suggestion_vote"),
+    )
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return f"<SuggestionVote s={self.suggestion_id} u={self.user_id}>"
+
+
 def setting(key: str, default: str = "") -> str:
     row = SiteSetting.query.filter_by(key=key).first()
     return row.value if row and row.value is not None else default
@@ -927,6 +1283,88 @@ def current_season() -> Season | None:
     return Season.query.filter_by(is_current=True).first() or Season.query.order_by(Season.number.desc()).first()
 
 
+# --------------------------------------------------------------------------- #
+# Estadisticas de jugadores
+# --------------------------------------------------------------------------- #
+def recompute_player_stats() -> int:
+    """Recalcula los acumulados de Player desde player_match_stats.
+
+    Devuelve cuantos jugadores quedaron actualizados.
+    """
+    rows = (
+        db.session.query(
+            PlayerMatchStat.player_id,
+            func.count(func.distinct(PlayerMatchStat.match_id)),
+            func.sum(PlayerMatchStat.goals),
+            func.sum(PlayerMatchStat.assists),
+            func.sum(PlayerMatchStat.clean_sheets),
+            func.sum(PlayerMatchStat.clean_sheet_seconds),
+            func.sum(PlayerMatchStat.own_goals),
+            func.sum(PlayerMatchStat.yellow_cards),
+            func.sum(PlayerMatchStat.red_cards),
+        )
+        .group_by(PlayerMatchStat.player_id)
+        .all()
+    )
+
+    totals = {row[0]: row[1:] for row in rows}
+    updated = 0
+    for player in Player.query.all():
+        data = totals.get(player.id)
+        if data is None:
+            player.matches = 0
+            player.goals = 0
+            player.assists = 0
+            player.clean_sheets = 0
+            player.clean_sheet_seconds = 0
+            player.own_goals = 0
+            player.yellow_cards = 0
+            player.red_cards = 0
+        else:
+            (player.matches, player.goals, player.assists, player.clean_sheets,
+             player.clean_sheet_seconds, player.own_goals,
+             player.yellow_cards, player.red_cards) = [int(v or 0) for v in data]
+        updated += 1
+    db.session.commit()
+    return updated
+
+
+def player_stat_rows(
+    division_id: int | None = None,
+    limit: int | None = None,
+    season_id: int | None = None,
+) -> list[Player]:
+    """Tabla de estadisticas: jugadores con alguna aportacion, mejor primero."""
+    query = Player.query.filter(db.or_(Player.goals > 0, Player.assists > 0, Player.clean_sheets > 0,
+                                        Player.matches > 0))
+    if division_id or season_id:
+        query = query.join(Team, Player.team_id == Team.id)
+        if division_id:
+            query = query.filter(Team.division_id == division_id)
+        if season_id:
+            query = query.join(Division, Team.division_id == Division.id) \
+                         .filter(Division.season_id == season_id)
+    query = query.order_by(
+        (Player.goals * 2 + Player.assists).desc(),
+        Player.clean_sheets.desc(),
+        Player.goals.desc(),
+        Player.username,
+    )
+    return query.limit(limit).all() if limit else query.all()
+
+
+def division_standings(division_id: int) -> list[Standing]:
+    rows = (
+        Standing.query.filter_by(division_id=division_id)
+        .join(Team, Standing.team_id == Team.id)
+        .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc(), Team.name)
+        .all()
+    )
+    for index, row in enumerate(rows, start=1):
+        row.position = index
+    return rows
+
+
 def seasons_with_divisions() -> list:
     return Season.query.order_by(Season.number.desc()).all()
 
@@ -937,8 +1375,11 @@ def is_visible(item, now: datetime | None = None) -> bool:
 
 __all__ = [
     "User", "Role", "Season", "Division", "Phase", "DivisionRule", "PromotionSlot", "Team", "Player",
-    "Standing", "Match", "Room", "Category", "Article", "MuseumItem", "Alliance", "SocialLink",
+    "Standing", "Match", "MatchReport", "PlayerMatchStat", "PasswordResetToken", "EmailLog",
+    "Room", "Category", "Article", "MuseumItem", "Alliance", "SocialLink",
     "StaffMember", "RuleEntry", "SanctionLevel", "LiveStream", "DonationChannel", "Donation",
     "DonationGoal", "SiteSetting", "ActivityLog", "log_activity", "setting", "set_setting",
-    "current_season", "seasons_with_divisions", "date", "db", "utcnow",
+    "Suggestion", "SuggestionStatus", "SUGGESTION_CATEGORIES", "SuggestionVote",
+    "current_season", "seasons_with_divisions", "recompute_player_stats", "player_stat_rows",
+    "division_standings", "date", "db", "utcnow",
 ]
