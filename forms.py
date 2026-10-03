@@ -1,4 +1,4 @@
-﻿"""Formularios (WTForms + CSRF)."""
+"""Formularios (WTForms + CSRF)."""
 from __future__ import annotations
 
 from flask_wtf import FlaskForm
@@ -86,12 +86,76 @@ class ChangePasswordForm(FlaskForm):
     submit = SubmitField("ACTUALIZAR CONTRASENA")
 
 
+class ForgotPasswordForm(FlaskForm):
+    """Solicita el enlace de restablecimiento; el campo acepta usuario o correo."""
+    identifier = StringField(
+        "Usuario o correo electronico",
+        validators=[DataRequired("Escribe tu usuario o tu correo."), Length(max=160)],
+        render_kw={"autocomplete": "username", "autofocus": True, "placeholder": "jugador_x5"},
+    )
+    submit = SubmitField("ENVIAR ENLACE")
+
+
+class ResetPasswordForm(FlaskForm):
+    new_password = PasswordField(
+        "Nueva contrasena", validators=[DataRequired(), Length(min=6, message="Minimo 6 caracteres.")],
+        render_kw={"autocomplete": "new-password", "placeholder": "········"},
+    )
+    confirm_password = PasswordField(
+        "Confirmar nueva contrasena",
+        validators=[DataRequired(), EqualTo("new_password", message="Las contrasenas no coinciden.")],
+        render_kw={"autocomplete": "new-password", "placeholder": "········"},
+    )
+    submit = SubmitField("GUARDAR NUEVA CONTRASENA")
+
+
 class GoogleLinkForm(FlaskForm):
     google_email = StringField(
         "Correo de Google", validators=[DataRequired(), Email("Correo no valido.")],
         render_kw={"placeholder": "tu.cuenta@gmail.com"},
     )
     submit = SubmitField("VINCULAR CUENTA")
+
+
+# --------------------------------------------------------------------------- #
+# Sugerencias
+# --------------------------------------------------------------------------- #
+class SuggestionForm(FlaskForm):
+    """Mensaje del canal de sugerencias (solo para quien ya entro con su cuenta)."""
+
+    category = SelectField(
+        "Tipo de mensaje",
+        choices=[("idea", "Idea nueva"), ("mejora", "Mejora de la pagina"),
+                 ("liga", "Liga y reglamento"), ("error", "Algo no funciona"),
+                 ("otro", "Otro")],
+        validators=[DataRequired("Elige de que tipo es tu mensaje.")],
+    )
+    title = StringField(
+        "Titulo",
+        validators=[DataRequired("Escribe un titulo corto."), Length(max=120, message="Maximo 120 caracteres.")],
+        render_kw={"placeholder": "Que quieres cambiar de la pagina", "maxlength": "120"},
+    )
+    body = TextAreaField(
+        "Comentario",
+        validators=[DataRequired("Escribe tu comentario."), Length(min=10, message="Cuenta un poco mas.")],
+        render_kw={"placeholder": "Explica tu idea, el error o lo que mejoraria.", "rows": "5"},
+    )
+    submit = SubmitField("ENVIAR SUGERENCIA")
+
+
+class SuggestionReplyForm(FlaskForm):
+    """Respuesta del staff en el hilo de sugerencias."""
+
+    status = SelectField(
+        "Estado",
+        choices=[("new", "Nueva"), ("reviewing", "En estudio"), ("done", "Aplicada")],
+        validators=[DataRequired()],
+    )
+    staff_reply = TextAreaField(
+        "Respuesta del staff", validators=[Optional()],
+        render_kw={"placeholder": "Contesta al jugador...", "rows": "4"},
+    )
+    submit = SubmitField("GUARDAR RESPUESTA")
 
 
 # --------------------------------------------------------------------------- #
@@ -118,7 +182,7 @@ class ArticleForm(FlaskForm):
     cover = FileField("Portada", validators=[Optional(), FileAllowed(["png", "jpg", "jpeg", "webp"], "Solo imagenes.")])
     remove_cover = BooleanField("Quitar portada actual")
     attachment = FileField("Documento adjunto", validators=[Optional(), FileAllowed(["pdf", "png", "jpg", "jpeg", "webp"], "PDF o imagen.")])
-    division_id = SelectField("Division", coerce=optional_int, validators=[Optional()])
+    division_id = SelectField("Division", coerce=optional_int, choices=[], validators=[Optional()])
     published_at = DateTimeField("Publicado el", validators=[Optional()], format="%Y-%m-%dT%H:%M")
     expires_at = DateTimeField("Vigente hasta", validators=[Optional()], format="%Y-%m-%dT%H:%M")
     is_featured = BooleanField("Destacar en portada")
@@ -135,7 +199,7 @@ class MuseumForm(FlaskForm):
     division_short = StringField("Division", validators=[Optional(), Length(max=8)], render_kw={"placeholder": "D1"})
     season_number = IntegerField("Temporada", validators=[Optional(), NumberRange(0, 99)])
     recipient = StringField("Ganador", validators=[Optional(), Length(max=80)])
-    team_id = SelectField("Equipo", coerce=optional_int, validators=[Optional()])
+    team_id = SelectField("Equipo", coerce=optional_int, choices=[], validators=[Optional()])
     description = StringField("Descripcion", validators=[Optional(), Length(max=400)])
     image = FileField("Imagen", validators=[Optional(), FileAllowed(["png", "jpg", "jpeg", "webp"], "Solo imagenes.")])
     place = IntegerField("Puesto", validators=[Optional(), NumberRange(0, 99)], default=1)
@@ -148,7 +212,7 @@ class MuseumForm(FlaskForm):
 class TeamForm(FlaskForm):
     name = StringField("Nombre del equipo", validators=[DataRequired(), Length(max=80)])
     short = StringField("Abreviatura", validators=[Optional(), Length(max=20)])
-    division_id = SelectField("Division", coerce=optional_int, validators=[Optional()])
+    division_id = SelectField("Division", coerce=optional_int, choices=[], validators=[Optional()])
     coach = StringField("DT / Entrenador", validators=[Optional(), Length(max=60)])
     captain = StringField("Capitan", validators=[Optional(), Length(max=60)])
     country = StringField("Pais", validators=[Optional(), Length(max=60)])
@@ -163,7 +227,7 @@ class TeamForm(FlaskForm):
 
 
 class PlayerForm(FlaskForm):
-    team_id = SelectField("Equipo", coerce=optional_int, validators=[DataRequired("Selecciona un equipo.")])
+    team_id = SelectField("Equipo", coerce=optional_int, choices=[], validators=[DataRequired("Selecciona un equipo.")])
     username = StringField("Usuario en HaxBall", validators=[DataRequired(), Length(max=60)])
     haxball_id = StringField("ID de HaxBall", validators=[Optional(), Length(max=40)])
     position = SelectField("Posicion", choices=[("GK", "Portero"), ("DF", "Defensa"), ("MF", "Medio"),
@@ -177,13 +241,13 @@ class PlayerForm(FlaskForm):
 
 
 class MatchForm(FlaskForm):
-    division_id = SelectField("Division", coerce=optional_int, validators=[DataRequired()])
+    division_id = SelectField("Division", coerce=optional_int, choices=[], validators=[DataRequired()])
     journey = IntegerField("Jornada", validators=[DataRequired(), NumberRange(1, 99)], default=1)
     stage = StringField("Fase", validators=[Optional(), Length(max=40)], default="Liga regular")
     played_on = DateField("Fecha", validators=[Optional()])
     kickoff = StringField("Hora", validators=[Optional(), Length(max=5)], render_kw={"placeholder": "19:00"})
-    home_team_id = SelectField("Equipo local", coerce=optional_int, validators=[DataRequired()])
-    away_team_id = SelectField("Equipo visitante", coerce=optional_int, validators=[DataRequired()])
+    home_team_id = SelectField("Equipo local", coerce=optional_int, choices=[], validators=[DataRequired()])
+    away_team_id = SelectField("Equipo visitante", coerce=optional_int, choices=[], validators=[DataRequired()])
     home_score = IntegerField("Marcador local", validators=[Optional(), NumberRange(0, 99)])
     away_score = IntegerField("Marcador visitante", validators=[Optional(), NumberRange(0, 99)])
     status = SelectField("Estado", choices=[("scheduled", "Programado"), ("live", "En vivo"),
@@ -194,6 +258,68 @@ class MatchForm(FlaskForm):
     stream_url = StringField("Link del stream", validators=[Optional(), Length(max=255)])
     notes = TextAreaField("Notas", validators=[Optional()])
     submit = SubmitField("GUARDAR")
+
+
+class MatchReportForm(FlaskForm):
+    """Informe de un partido: foto del partido, resultado y lectura."""
+    photo = FileField(
+        "Foto del partido",
+        validators=[Optional(), FileAllowed(["png", "jpg", "jpeg", "webp"], "Solo imagenes.")],
+    )
+    remove_photo = BooleanField("Quitar la foto actual")
+    photo_credit = StringField("Credito de la foto", validators=[Optional(), Length(max=120)],
+                               render_kw={"placeholder": "Foto: staff de la liga"})
+    headline = StringField("Titular", validators=[Optional(), Length(max=180)],
+                           render_kw={"placeholder": "Goleada en la jornada 5"})
+    summary = StringField("Resumen", validators=[Optional(), Length(max=400)])
+    body = TextAreaField("Cronica", validators=[Optional()])
+    video_url = StringField("Video del partido", validators=[Optional(), Length(max=255)])
+    mvp_player_id = SelectField("Jugador del partido", coerce=optional_int, choices=[], validators=[Optional()])
+    is_published = BooleanField("Publicar el informe", default=True)
+    submit = SubmitField("GUARDAR INFORME")
+
+
+class PlayerStatForm(FlaskForm):
+    """Una fila de la tabla de estadisticas individuales del partido."""
+    player_id = SelectField("Jugador", coerce=optional_int, choices=[],
+                            validators=[DataRequired("Selecciona un jugador.")])
+    goals = IntegerField("Goles", validators=[Optional(), NumberRange(0, 99)], default=0)
+    assists = IntegerField("Asistencias", validators=[Optional(), NumberRange(0, 99)], default=0)
+    clean_sheets = IntegerField("CS", validators=[Optional(), NumberRange(0, 9)], default=0,
+                                render_kw={"title": "Clean sheet / valla invicta"})
+    clean_sheet_seconds = IntegerField("Segundos sin gol", validators=[Optional(), NumberRange(0, 36000)], default=0)
+    own_goals = IntegerField("Autogoles", validators=[Optional(), NumberRange(0, 99)], default=0)
+    yellow_cards = IntegerField("Amarillas", validators=[Optional(), NumberRange(0, 9)], default=0)
+    red_cards = IntegerField("Rojas", validators=[Optional(), NumberRange(0, 9)], default=0)
+    minutes = IntegerField("Minutos", validators=[Optional(), NumberRange(0, 200)], default=0)
+    is_mvp = BooleanField("MVP")
+    note = StringField("Nota", validators=[Optional(), Length(max=160)],
+                       render_kw={"placeholder": "Doblete en el minuto 3 y 40"})
+    submit = SubmitField("ANADIR")
+
+
+class RosterPlayerForm(FlaskForm):
+    """Alta rapida de un jugador dentro de la pantalla de un equipo."""
+    username = StringField("Usuario en HaxBall", validators=[DataRequired(), Length(max=60)],
+                           render_kw={"placeholder": "jugador_x5"})
+    haxball_id = StringField("ID de HaxBall", validators=[Optional(), Length(max=40)])
+    position = SelectField("Posicion", choices=[("GK", "Portero"), ("DF", "Defensa"), ("MF", "Medio"),
+                                                 ("FW", "Delantero"), ("MC", "Mediocampo")],
+                           validators=[DataRequired()], default="MF")
+    number = IntegerField("Numero", validators=[Optional(), NumberRange(0, 99)], default=0)
+    country = StringField("Pais", validators=[Optional(), Length(max=60)])
+    is_captain = BooleanField("Capitan")
+    submit = SubmitField("ANADIR A LA PLANTILLA")
+
+
+class TeamCrestForm(FlaskForm):
+    """Subir o cambiar solo el escudo, sin entrar al formulario completo."""
+    crest = FileField(
+        "Escudo / logo del equipo",
+        validators=[DataRequired("Elige una imagen."), FileAllowed(["png", "jpg", "jpeg", "webp", "svg"], "Solo imagenes.")],
+    )
+    remove_crest = BooleanField("Quitar el escudo actual")
+    submit = SubmitField("GUARDAR ESCUDO")
 
 
 class RoomForm(FlaskForm):
