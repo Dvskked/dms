@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#02050f">
+    <meta name="theme-color" content="#faf8ff">
     <meta name="description" content="{% block description %}Sitio oficial de The Diamonds League, liga competitiva de HaxBall X5.{% endblock %}">
-    <meta name="color-scheme" content="dark">
+    <meta name="color-scheme" content="light">
     <meta name="author" content="{{ app_name }}">
-    <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+    <meta name="robots" content="{% block robots %}{% if current_user.is_authenticated %}noindex, nofollow{% else %}index, follow{% endif %}{% endblock %}">
     <meta property="og:site_name" content="{{ app_name }}">
     <meta property="og:type" content="website">
     <meta property="og:title" content="{% block og_title %}{{ app_name }}{% endblock %}">

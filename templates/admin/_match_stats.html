@@ -1,0 +1,47 @@
+{# ============================================================================
+   Tabla de estadisticas individuales de un partido.
+   Uso: {{ stat_table(stats, side, match, editable=True) }}
+   ========================================================================= #}
+
+{# --- Una fila de la tabla de estadisticas --- #}
+{% macro stat_row(stat, side, match, editable=True) %}
+<tr class="{% if stat.is_mvp %}is-mvp{% endif %}">
+    <td class="cell-text">
+        {{ stat.player.username }}
+        {% if stat.is_mvp %}<span class="chip chip--yellow">MVP</span>{% endif %}
+        {% if stat.note %}<span class="text-muted">— {{ stat.note }}</span>{% endif %}
+    </td>
+    <td class="mono">{{ stat.player.position or '—' }}</td>
+    <td class="num mono stat-g">{{ stat.goals }}</td>
+    <td class="num mono stat-a">{{ stat.assists }}</td>
+    <td class="num mono stat-cs">{{ stat.clean_sheets }}</td>
+    <td class="num mono stat-ag">{{ stat.own_goals }}</td>
+    <td class="num mono">{{ stat.yellow_cards }}/{{ stat.red_cards }}</td>
+    <td class="num mono">{{ stat.minutes or '—' }}</td>
+    {% if editable %}
+    <td>
+        <form method="post" action="{{ url_for('admin.match_stat_remove', pk=match.id, stat_id=stat.id) }}"
+              data-confirm="¿Quitar la fila de «{{ stat.player.username }}»?">
+            {{ csrf_token }}
+            <button class="btn btn--sm btn--danger" type="submit">QUITAR</button>
+        </form>
+    </td>
+    {% endif %}
+</tr>
+{% endmacro %}
+
+
+{# --- Encabezado comun de la tabla --- #}
+{% macro stat_head(editable=True) %}
+<tr>
+    <th scope="col">Jugador</th>
+    <th scope="col">Pos</th>
+    <th scope="col" class="num" title="Goles">G</th>
+    <th scope="col" class="num" title="Asistencias">A</th>
+    <th scope="col" class="num" title="Clean sheets / vallas invictas">CS</th>
+    <th scope="col" class="num" title="Autogoles">AG</th>
+    <th scope="col" class="num" title="Tarjetas amarillas / rojas">TA/TR</th>
+    <th scope="col" class="num" title="Minutos jugados">Min</th>
+    {% if editable %}<th scope="col">Acciones</th>{% endif %}
+</tr>
+{% endmacro %}

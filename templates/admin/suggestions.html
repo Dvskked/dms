@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Sugerencias — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('sugerencias') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">COMUNIDAD</span>
+                <h1>Sugerencias recibidas</h1>
+                <p class="text-muted">
+                    {{ total }} en total, {{ nuevas }} sin responder. Al responder,
+                    el jugador recibe un correo con tu respuesta.
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                <div class="seg-control">
+                    <a class="seg {% if not estado %}active{% endif %}" href="{{ url_for('admin.suggestions') }}">TODAS</a>
+                    <a class="seg" href="{{ url_for('admin.suggestions', estado='new') }}">NUEVAS</a>
+                    <a class="seg" href="{{ url_for('admin.suggestions', estado='reviewing') }}">EN ESTUDIO</a>
+                    <a class="seg" href="{{ url_for('admin.suggestions', estado='done') }}">APLICADAS</a>
+                </div>
+            </div>
+        </header>
+
+        {% if rows %}
+        <ul class="forum-list admin-forum-list">
+            {% for row in rows %}
+            <li class="forum-item {% if row.status == 'done' %}is-done{% elif row.status == 'reviewing' %}is-reviewing{% endif %}">
+                <div class="forum-item-head">
+                    <div class="forum-item-who">
+                        <strong>{{ row.author_label }}</strong>
+                        <small class="mono">
+                            @{{ row.author.username if row.author else 'eliminado' }} ·
+                            {{ row.created_at|fdate }} · #{{ row.id }}
+                        </small>
+                    </div>
+                    <div class="forum-item-tags">
+                        <span class="chip chip--pink">{{ row.category_label }}</span>
+                        <span class="chip chip--cyan">{{ row.likes or 0 }} VOTOS</span>
+                    </div>
+                </div>
+
+                <h3 class="forum-item-title">{{ row.title }}</h3>
+                <p class="forum-item-body">{{ row.body }}</p>
+
+                <form method="post" action="{{ url_for('admin.suggestion_reply', pk=row.id) }}" class="form-grid form-grid--tight">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                    <div class="field field--inline">
+                        <label for="estado-{{ row.id }}">Estado</label>
+                        <select class="input" id="estado-{{ row.id }}" name="status">
+                            <option value="new" {% if row.status == 'new' %}selected{% endif %}>Nueva</option>
+                            <option value="reviewing" {% if row.status == 'reviewing' %}selected{% endif %}>En estudio</option>
+                            <option value="done" {% if row.status == 'done' %}selected{% endif %}>Aplicada</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="respuesta-{{ row.id }}">Respuesta</label>
+                        <textarea class="input" id="respuesta-{{ row.id }}" name="staff_reply" rows="3"
+                                  placeholder="Contesta al jugador...">{{ row.staff_reply or '' }}</textarea>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn btn--sm btn--primary" type="submit">GUARDAR Y AVISAR</button>
+                    </div>
+                </form>
+
+                <div class="forum-item-foot">
+                    <form method="post" action="{{ url_for('admin.suggestion_delete', pk=row.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="btn btn--sm btn--ghost btn--danger" type="submit">ELIMINAR</button>
+                    </form>
+                    {% if row.replied_at %}
+                    <span class="mono text-muted">respondida el {{ row.replied_at|fdate }}</span>
+                    {% endif %}
+                </div>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty-state">
+            <strong>No hay sugerencias con ese filtro.</strong>
+            <p>Cuando los jugadores opinen, sus mensajes apareceran aqui.</p>
+        </p>
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

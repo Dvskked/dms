@@ -30,6 +30,7 @@
             <div class="field field--check">
                 {{ form.remember() }}
                 <span>{{ form.remember.label.text }}</span>
+                <a class="auth-forgot" href="{{ url_for('auth.forgot_password') }}">¿Olvidaste tu contrasena?</a>
             </div>
 
             <button class="btn btn--primary btn--block" type="submit">INGRESAR</button>
@@ -37,9 +38,6 @@
 
         <p class="auth-switch">
             ¿No tienes cuenta? <a href="{{ url_for('auth.register') }}">Registrate gratis</a>
-        </p>
-        <p class="auth-hint mono">
-            Usuario inicial: <strong>admin</strong> · contrasena: <strong>adminmascapito</strong>
         </p>
     </section>
 </main>

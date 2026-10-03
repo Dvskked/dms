@@ -27,6 +27,8 @@
         <a href="#alianzas" data-spy-link>ALIANZAS</a>
         <a href="#redes"   data-spy-link>REDES</a>
         <a href="#equipo"  data-spy-link>EQUIPO</a>
+        <a href="{{ url_for('site.stats') }}">ESTADISTICAS</a>
+        <a href="{{ url_for('site.suggestions') }}">SUGERENCIAS</a>
     </nav>
 
     {# --- Acciones de la derecha --- #}
@@ -165,13 +167,18 @@
     <a href="#alianzas">ALIANZAS</a>
     <a href="#redes">REDES SOCIALES</a>
     <a href="#equipo">EQUIPO ADMINISTRACION</a>
+    <a href="{{ url_for('site.stats') }}">TABLAS Y ESTADISTICAS</a>
+    <a href="{{ url_for('site.suggestions') }}">SUGERENCIAS</a>
     <a href="#live" data-accent="live">LIVE FUTBOL</a>
     <a href="#donacion">DONACION</a>
     {% if current_user.is_authenticated %}
         <a href="{{ url_for('auth.profile') }}">EDITAR PERFIL</a>
         <a href="{{ url_for('auth.change_password') }}">CAMBIAR CONTRASENA</a>
         <a href="{{ url_for('auth.google') }}">GOOGLE</a>
-        {% if current_user.is_admin %}<a href="{{ url_for('admin.dashboard') }}">PANEL ADMIN</a>{% endif %}
+        {% if current_user.is_admin %}
+            <a href="{{ url_for('admin.dashboard') }}">PANEL ADMIN</a>
+            <a href="{{ url_for('admin.suggestions') }}">SUGERENCIAS RECIBIDAS</a>
+        {% endif %}
         <form method="post" action="{{ url_for('auth.logout') }}" style="display:contents">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button type="submit" class="gear-item danger" style="min-height:52px;border-bottom:1px solid var(--line);width:100%">

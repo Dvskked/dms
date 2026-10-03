@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Sugerencias — {{ app_name }}{% endblock %}
+{% block description %}Canal de sugerencias de {{ app_name }}: deja tu opinion y lee la de los demas jugadores.{% endblock %}
+
+{% block body_class %}page-suggestions{% endblock %}
+
+{% block content %}
+<main id="main" class="section forum-page">
+    <nav class="crumbs reveal" aria-label="Migas de pan">
+        <a href="{{ url_for('site.index') }}">{{ app_name }}</a>
+        <span aria-hidden="true">/</span>
+        <span>Sugerencias</span>
+    </nav>
+
+    <header class="forum-head reveal">
+        <span class="section-tag mono">CANAL DE LA COMUNIDAD</span>
+        <h1>Sugerencias y opiniones</h1>
+        <p class="forum-lead">
+            Escribe lo que mejorarias de la pagina o de la liga. Tu mensaje queda guardado
+            con tu usuario y el staff lo responde uno por uno.
+        </p>
+        <div class="forum-head-user">
+            <span class="avatar" aria-hidden="true">
+                {% if current_user.avatar %}
+                    <img src="{{ url_for('static', filename=current_user.avatar) }}" alt="">
+                {% else %}{{ current_user.initials }}{% endif %}
+            </span>
+            <div>
+                <strong>{{ current_user.label }}</strong>
+                <small>@{{ current_user.username }}</small>
+            </div>
+        </div>
+    </header>
+
+    {# ------------------------------------------------------------------ #}
+    <div class="forum-layout">
+        {# --- Formulario --- #}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Deja tu mensaje</h2>
+            </header>
+
+            <form method="post" class="form-grid form-grid--tight" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div class="field">
+                    {{ form.category.label }}
+                    {{ form.category(class="input") }}
+                    {% for error in form.category.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.title.label }}
+                    {{ form.title(class="input") }}
+                    {% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.body.label }}
+                    {{ form.body(class="input") }}
+                    {% for error in form.body.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">{{ form.submit.label.text }}</button>
+                </div>
+            </form>
+        </section>
+
+        {# --- Mensajes --- #}
+        <section class="forum-feed reveal">
+            {# --- Filtros --- #}
+            <div class="forum-filters">
+                <a class="chip {% if not categoria and not estado %}chip--cyan{% endif %}"
+                   href="{{ url_for('site.suggestions') }}">TODAS</a>
+                {% for key, label in categorias.items() %}
+                <a class="chip {% if categoria == key %}chip--cyan{% endif %}"
+                   href="{{ url_for('site.suggestions', categoria=key) }}">{{ label|upper }}</a>
+                {% endfor %}
+            </div>
+
+            {% if rows.items %}
+            <ul class="forum-list">
+                {% for row in rows.items %}
+                <li class="forum-item {% if row.status == 'done' %}is-done{% elif row.status == 'reviewing' %}is-reviewing{% endif %}">
+                    <div class="forum-item-head">
+                        <span class="avatar avatar--sm" aria-hidden="true">
+                            {% if row.author and row.author.avatar %}
+                                <img src="{{ url_for('static', filename=row.author.avatar) }}" alt="">
+                            {% elif row.author %}{{ row.author.initials }}
+                            {% else %}?{% endif %}
+                        </span>
+                        <div class="forum-item-who">
+                            <strong>{{ row.author_label }}</strong>
+                            <small class="mono">
+                                @{{ row.author.username if row.author else 'eliminado' }} ·
+                                {{ row.created_at|fdate }}
+                            </small>
+                        </div>
+                        <div class="forum-item-tags">
+                            <span class="chip chip--pink">{{ row.category_label }}</span>
+                            <span class="chip {% if row.status == 'done' %}chip--lime{% elif row.status == 'reviewing' %}chip--warn{% endif %}">
+                                {{ row.status_label|upper }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <h3 class="forum-item-title">{{ row.title }}</h3>
+                    <p class="forum-item-body">{{ row.body }}</p>
+
+                    {% if row.staff_reply %}
+                    <div class="forum-item-reply">
+                        <span class="mono">RESPUESTA DEL STAFF{% if row.staff %} · {{ row.staff.label }}{% endif %}</span>
+                        <p>{{ row.staff_reply }}</p>
+                    </div>
+                    {% endif %}
+
+                    <div class="forum-item-foot">
+                        <form method="post" action="{{ url_for('site.suggestion_like', pk=row.id) }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="btn btn--sm btn--ghost" type="submit">
+                                APOYAR · {{ row.likes or 0 }}
+                            </button>
+                        </form>
+                        {% if row.replied_at %}
+                        <span class="mono text-muted">respondida el {{ row.replied_at|fdate }}</span>
+                        {% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+
+            {# --- Paginacion --- #}
+            {% if rows.pages > 1 %}
+            <nav class="forum-pages" aria-label="Paginas del canal">
+                {% if rows.has_prev %}
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('site.suggestions', pagina=rows.prev_num, categoria=categoria, estado=estado) }}">ANTERIOR</a>
+                {% endif %}
+                <span class="mono">PAGINA {{ rows.page }} DE {{ rows.pages }}</span>
+                {% if rows.has_next %}
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('site.suggestions', pagina=rows.next_num, categoria=categoria, estado=estado) }}">SIGUIENTE</a>
+                {% endif %}
+            </nav>
+            {% endif %}
+            {% else %}
+            <p class="empty-state">
+                <strong>Aun no hay mensajes.</strong>
+                <p>Se el primero en opinar: escribe a la izquierda y tu mensaje aparecera aqui.</p>
+            </p>
+            {% endif %}
+        </section>
+    </div>
+</main>
+{% endblock %}

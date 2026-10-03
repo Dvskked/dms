@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}{{ report.headline if report and report.headline else match.headline }} — {{ app_name }}{% endblock %}
+{% block description %}{{ (report.summary if report and report.summary else match.headline)|excerpt(160) }}{% endblock %}
+
+{% block body_class %}page-match{% endblock %}
+
+{% block content %}
+<main id="main" class="section match-page">
+    <nav class="crumbs reveal" aria-label="Migas de pan">
+        <a href="{{ url_for('site.index') }}">{{ app_name }}</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ url_for('site.index') }}#liga">LIGA</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ url_for('site.stats') }}">Estadisticas</a>
+        <span aria-hidden="true">/</span>
+        <span>J{{ match.journey }}</span>
+    </nav>
+
+    <article class="match-report reveal">
+        {# ---------------------------------------------------------------- #}
+        <header class="match-report-head">
+            <div class="match-report-meta">
+                <span class="chip chip--cyan">{{ match.stage|upper }}</span>
+                <span class="chip">{{ match.division.short if match.division else 'LIGA' }}</span>
+                <span class="chip">JORNADA {{ match.journey }}</span>
+                <span class="mono text-muted">
+                    {{ match.played_on|fdate }} {{ match.kickoff or '' }}
+                </span>
+            </div>
+
+            {% if report and report.headline %}
+            <h1>{{ report.headline }}</h1>
+            {% else %}
+            <h1>{{ match.headline }}</h1>
+            {% endif %}
+
+            {% if report and report.summary %}
+            <p class="match-report-lead">{{ report.summary }}</p>
+            {% endif %}
+        </header>
+
+        {# ---------------------------------------------------------------- #}
+        {# Marcador #}
+        <section class="scoreboard">
+            <div class="scoreboard-side">
+                <span class="crest crest--lg" style="--team-color: {{ match.home_team.color if match.home_team else '#1bebf2' }}">
+                    {% if match.home_team and match.home_team.has_crest %}
+                        <img src="{{ url_for('static', filename=match.home_team.crest_url) }}" alt="Escudo de {{ match.home_team.name }}">
+                    {% else %}
+                        <span class="crest-initials">{{ match.home_team.initials if match.home_team else '—' }}</span>
+                    {% endif %}
+                </span>
+                <span class="scoreboard-name">{{ match.home_team.name if match.home_team else 'Local' }}</span>
+            </div>
+
+            <div class="scoreboard-center">
+                <span class="scoreboard-score">{{ match.home_score if match.home_score is not none else '—' }}<span class="scoreboard-dash">-</span>{{ match.away_score if match.away_score is not none else '—' }}</span>
+                <span class="scoreboard-status mono">
+                    {% if match.status == 'finished' %}FINALIZADO
+                    {% elif match.status == 'live' %}EN VIVO
+                    {% elif match.status == 'wo' %}WALKOVER
+                    {% elif match.status == 'postponed' %}APLAZADO
+                    {% else %}PROGRAMADO{% endif %}
+                </span>
+            </div>
+
+            <div class="scoreboard-side scoreboard-side--away">
+                <span class="crest crest--lg" style="--team-color: {{ match.away_team.color if match.away_team else '#ff2e88' }}">
+                    {% if match.away_team and match.away_team.has_crest %}
+                        <img src="{{ url_for('static', filename=match.away_team.crest_url) }}" alt="Escudo de {{ match.away_team.name }}">
+                    {% else %}
+                        <span class="crest-initials">{{ match.away_team.initials if match.away_team else '—' }}</span>
+                    {% endif %}
+                </span>
+                <span class="scoreboard-name">{{ match.away_team.name if match.away_team else 'Visitante' }}</span>
+            </div>
+        </section>
+
+        {# ---------------------------------------------------------------- #}
+        {# Foto del partido #}
+        {% if report and report.photo %}
+        <figure class="match-photo" data-lightbox data-full="{{ report.photo }}"
+                data-caption="{{ match.headline }}{% if report.photo_credit %} · {{ report.photo_credit }}{% endif %}">
+            <img src="{{ url_for('static', filename=report.photo) }}"
+                 alt="Foto de {{ match.headline }}">
+            {% if report.photo_credit %}
+            <figcaption class="mono">{{ report.photo_credit }}</figcaption>
+            {% endif %}
+        </figure>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        {# Goleadores #}
+        {% if scorers %}
+        <section class="report-block">
+            <h2 class="block-title">GOLEADORES</h2>
+            <div class="scorer-list">
+                {% for stat in scorers %}
+                <div class="scorer-chip {% if stat.own_goals %}scorer-chip--own{% endif %}">
+                    <span class="scorer-name">{{ stat.player.username }}</span>
+                    <span class="scorer-team">{{ stat.team.short or stat.team.name if stat.team else '' }}</span>
+                    <span class="scorer-num">
+                        {% if stat.goals %}{{ stat.goals }} gol{{ 'es' if stat.goals != 1 }}{% endif %}
+                        {% if stat.assists %} · {{ stat.assists }} asist.{{ 's' if stat.assists != 1 }}{% endif %}
+                        {% if stat.clean_sheets %} · CS{% endif %}
+                        {% if stat.own_goals %} · {{ stat.own_goals }} AG{% endif %}
+                    </span>
+                    {% if stat.is_mvp %}<span class="chip chip--yellow">MVP</span>{% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        {# Tabla de estadisticas del partido #}
+        {% if home_stats or away_stats %}
+        <section class="report-block">
+            <h2 class="block-title">ESTADISTICAS DEL PARTIDO</h2>
+
+            {% for team, rows, side in [
+                (match.home_team, home_stats, 'home'),
+                (match.away_team, away_stats, 'away')
+            ] %}
+            <div class="stats-side stats-side--{{ side }}">
+                <h3 class="stats-side-name">
+                    {% if team and team.has_crest %}
+                        <img src="{{ url_for('static', filename=team.crest_url) }}" alt="">
+                    {% endif %}
+                    {{ team.name if team else '—' }}
+                </h3>
+
+                {% if rows %}
+                <div class="table-scroll">
+                    <table class="data-table stat-table">
+                        <caption class="sr-only">Estadisticas de {{ team.name if team else 'el partido' }}</caption>
+                        <thead>
+                            <tr>
+                                <th scope="col">Jugador</th>
+                                <th scope="col" class="num">G</th>
+                                <th scope="col" class="num">A</th>
+                                <th scope="col" class="num">CS</th>
+                                <th scope="col" class="num">AG</th>
+                                <th scope="col" class="num">Min</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in rows %}
+                            <tr>
+                                <td class="cell-text">
+                                    {{ stat.player.username }}
+                                    {% if stat.is_mvp %}<span class="chip chip--yellow">MVP</span>{% endif %}
+                                </td>
+                                <td class="num mono">{{ stat.goals }}</td>
+                                <td class="num mono">{{ stat.assists }}</td>
+                                <td class="num mono">{{ stat.clean_sheets }}</td>
+                                <td class="num mono">{{ stat.own_goals }}</td>
+                                <td class="num mono">{{ stat.minutes or '—' }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">Sin estadisticas cargadas.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        {# Cronica #}
+        {% if report and report.body %}
+        <section class="report-block">
+            <h2 class="block-title">CRONICA</h2>
+            <div class="article-prose">{{ report.body|rich }}</div>
+        </section>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        {% if report and report.mvp %}
+        <section class="mvp-strip">
+            <span class="mono">MVP DEL PARTIDO</span>
+            <strong>{{ report.mvp.username }}</strong>
+            <span class="text-muted">
+                {{ report.mvp.position_label }} · {{ report.mvp.team.name if report.mvp.team else '' }}
+            </span>
+        </section>
+        {% endif %}
+
+        {% if report and report.video_url %}
+        <p class="report-actions">
+            <a class="btn btn--sm" href="{{ report.video_url }}" target="_blank" rel="noopener noreferrer">VER VIDEO</a>
+            <a class="btn btn--sm btn--ghost" href="{{ url_for('site.match_report', pk=match.id) }}">↻ ACTUALIZAR</a>
+        </p>
+        {% endif %}
+
+        {% if report and report.author %}
+        <p class="text-muted mono" style="font-size:.62rem;letter-spacing:.16em">
+            INFORME DE {{ report.author_label|upper }}
+        </p>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        {% if others %}
+        <section class="report-block">
+            <h2 class="block-title">RESTO DE LA JORNADA {{ match.journey }}</h2>
+            <div class="report-grid">
+                {% for other in others %}
+                <a class="report-card reveal" href="{{ url_for('site.match_report', pk=other.id) }}">
+                    <span class="mono text-muted" style="font-size:.58rem;letter-spacing:.2em">
+                        {{ other.played_on|fdate }}
+                    </span>
+                    <strong>{{ other.headline }}</strong>
+                </a>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+    </article>
+</main>
+{% endblock %}

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}Estadisticas — {{ app_name }}{% endblock %}
+{% block description %}Tablas de las dos divisiones y estadisticas individuales de cada jugador de {{ app_name }}.{% endblock %}
+
+{% block body_class %}page-stats{% endblock %}
+
+{% block content %}
+<main id="main" class="section stats-page">
+    <header class="stats-head reveal">
+        <span class="section-tag mono">COMPETICION</span>
+        <h1>Tablas y estadisticas</h1>
+        <p class="stats-lead">
+            {% if season %}
+            {{ season.name }}{% if season.year %} · {{ season.year }}{% endif %} ·
+            {% endif %}
+            Posiciones de cada division y produccion individual de los jugadores
+            (goles, asistencias, clean sheets y autogoles).
+        </p>
+    </header>
+
+    {% for entry in tables %}
+    <section class="stats-division reveal" id="{{ entry.division.key }}">
+        <header class="stats-division-head">
+            <div>
+                <span class="chip chip--{{ 'cyan' if loop.first else 'pink' }}">{{ entry.division.short }}</span>
+                <h2>{{ entry.division.name }}</h2>
+                <p class="text-muted">
+                    {{ entry.division.modality }} · {{ entry.division.teams_count or entry.teams|length }} equipos ·
+                    {{ entry.division.journeys_count }} jornadas
+                </p>
+            </div>
+            <a class="btn btn--sm btn--ghost" href="{{ url_for('site.index') }}#liga">VER EN LA LIGA</a>
+        </header>
+
+        {# --- Tabla de posiciones --- #}
+        {% if entry.standings %}
+        <div class="table-scroll">
+            <table class="data-table standings-table">
+                <caption class="sr-only">Tabla de posiciones de {{ entry.division.name }}</caption>
+                <thead>
+                    <tr>
+                        <th scope="col" class="num">#</th>
+                        <th scope="col">Equipo</th>
+                        <th scope="col" class="num">PJ</th>
+                        <th scope="col" class="num">G</th>
+                        <th scope="col" class="num">E</th>
+                        <th scope="col" class="num">P</th>
+                        <th scope="col" class="num">GF</th>
+                        <th scope="col" class="num">GC</th>
+                        <th scope="col" class="num">DG</th>
+                        <th scope="col" class="num">Pts</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in entry.standings %}
+                    <tr>
+                        <td class="num mono pos-{{ loop.index }}">{{ loop.index }}</td>
+                        <td>
+                            <span class="cell-text cell-text--team">
+                                {% if row.team.has_crest %}
+                                <span class="crest crest--xs">
+                                    <img src="{{ url_for('static', filename=row.team.crest_url) }}" alt="">
+                                </span>
+                                {% endif %}
+                                {{ row.team.name }}
+                            </span>
+                        </td>
+                        <td class="num mono">{{ row.played }}</td>
+                        <td class="num mono">{{ row.won }}</td>
+                        <td class="num mono">{{ row.drawn }}</td>
+                        <td class="num mono">{{ row.lost }}</td>
+                        <td class="num mono">{{ row.goals_for }}</td>
+                        <td class="num mono">{{ row.goals_against }}</td>
+                        <td class="num mono {% if row.goal_difference > 0 %}is-up{% elif row.goal_difference < 0 %}is-down{% endif %}">
+                            {{ row.goal_difference }}
+                        </td>
+                        <td class="num mono pts">{{ row.points }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">Todavia no hay partidos disputados en {{ entry.division.name }}.</p>
+        {% endif %}
+
+        {# --- Estadisticas individuales de la division --- #}
+        {% if entry.players %}
+        <h3 class="block-title">ESTADISTICAS INDIVIDUALES</h3>
+        <div class="table-scroll">
+            <table class="data-table stat-table">
+                <caption class="sr-only">Estadisticas de jugadores de {{ entry.division.name }}</caption>
+                <thead>
+                    <tr>
+                        <th scope="col" class="num">#</th>
+                        <th scope="col">Jugador</th>
+                        <th scope="col">Equipo</th>
+                        <th scope="col" class="num">PJ</th>
+                        <th scope="col" class="num">Goles</th>
+                        <th scope="col" class="num">Asist.</th>
+                        <th scope="col" class="num">CS</th>
+                        <th scope="col" class="num">AG</th>
+                        <th scope="col" class="num">G/PJ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for player in entry.players %}
+                    <tr>
+                        <td class="num mono pos-{{ loop.index }}">{{ loop.index }}</td>
+                        <td>
+                            <span class="cell-text">
+                                {{ player.username }}
+                                {% if player.is_captain %}<span class="chip chip--lime">C</span>{% endif %}
+                            </span>
+                        </td>
+                        <td class="cell-text">{{ player.team.short or player.team.name if player.team else '—' }}</td>
+                        <td class="num mono">{{ player.matches }}</td>
+                        <td class="num mono col-g">{{ player.goals }}</td>
+                        <td class="num mono col-a">{{ player.assists }}</td>
+                        <td class="num mono col-cs">{{ player.clean_sheets }}</td>
+                        <td class="num mono col-ag">{{ player.own_goals }}</td>
+                        <td class="num mono">{{ player.goals_per_match }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="empty-state">Sin estadisticas individuales cargadas en {{ entry.division.name }}.</p>
+        {% endif %}
+    </section>
+    {% else %}
+    <p class="empty-state">
+        <strong>No hay divisiones configuradas.</strong>
+        <p>Crea las divisiones desde el panel de administracion.</p>
+    </p>
+    {% endfor %}
+
+    {# ------------------------------------------------------------------ #}
+    {% if recent_reports %}
+    <section class="report-block">
+        <h2 class="block-title">ULTIMOS INFORMES</h2>
+        <div class="report-grid">
+            {% for match in recent_reports %}
+            <a class="report-card reveal" href="{{ url_for('site.match_report', pk=match.id) }}">
+                {% if match.report and match.report.photo %}
+                <span class="report-card-thumb">
+                    <img src="{{ url_for('static', filename=match.report.photo) }}" alt="">
+                </span>
+                {% endif %}
+                <span class="mono text-muted" style="font-size:.58rem;letter-spacing:.2em">
+                    {{ match.played_on|fdate }} · J{{ match.journey }}
+                </span>
+                <strong>{{ match.report.headline if match.report and match.report.headline else match.headline }}</strong>
+                <span class="mono report-card-score">{{ match.score_text }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</main>
+{% endblock %}

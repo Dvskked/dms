@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+{% from "admin/_match_stats.html" import stat_head, stat_row %}
+
+{% block title %}Informe · {{ match.headline }} — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('calendario') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">06 · INFORME DE PARTIDO</span>
+                <h1>{{ match.headline }}</h1>
+                <p class="text-muted">
+                    {{ match.division.name if match.division else 'Sin division' }} ·
+                    Jornada {{ match.journey }} · {{ match.stage }} ·
+                    {{ match.played_on|fdate }} {{ match.kickoff or '' }}
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource='calendario') }}">← VOLVER</a>
+                <a class="btn btn--sm" href="{{ url_for('admin.edit', resource='calendario', pk=match.id) }}">EDITAR PARTIDO</a>
+                {% if report and report.is_published %}
+                <a class="btn btn--sm btn--primary" href="{{ url_for('site.match_report', pk=match.id) }}">VER PUBLICO</a>
+                {% endif %}
+            </div>
+        </header>
+
+        {# ------------------------------------------------------------------ #}
+        <div class="stat-quad reveal">
+            <div class="stat-tile stat-tile--home">
+                <span class="stat-team">
+                    {% if match.home_team and match.home_team.has_crest %}
+                        <img src="{{ url_for('static', filename=match.home_team.crest_url) }}" alt="">
+                    {% endif %}
+                    {{ match.home_team.name if match.home_team else 'Local' }}
+                </span>
+                <span class="stat-num">{{ match.home_score if match.home_score is not none else '—' }}</span>
+            </div>
+            <div class="stat-tile">
+                <span class="stat-team stat-team--away">{{ match.away_team.name if match.away_team else 'Visitante' }}</span>
+                <span class="stat-num">{{ match.away_score if match.away_score is not none else '—' }}</span>
+            </div>
+            <div class="stat-tile"><span class="stat-num">{{ home_stats|length }}</span><span class="stat-label">Fichas locales</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ away_stats|length }}</span><span class="stat-label">Fichas visitantes</span></div>
+        </div>
+
+        {# ------------------------------------------------------------------ #}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Foto y contenido del informe</h2>
+            </header>
+
+            <form method="post" enctype="multipart/form-data" class="form-grid" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div class="field">
+                    {{ form.photo.label }}
+                    {{ form.photo(class="input input--file", **{'data-preview': '#preview-photo'}) }}
+                    <img class="upload-preview-img is-hidden" id="preview-photo" alt="Vista previa">
+                    {% for error in form.photo.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    {% if report.photo %}
+                    <p class="field-hint">Actual: {{ report.photo }}</p>
+                    {% endif %}
+                </div>
+
+                {% if report.photo %}
+                <div class="field field--check">
+                    {{ form.remove_photo() }} <span>{{ form.remove_photo.label.text }}</span>
+                </div>
+                {% endif %}
+
+                <div class="field">
+                    {{ form.photo_credit.label }}
+                    {{ form.photo_credit(class="input") }}
+                </div>
+
+                <div class="field">
+                    {{ form.headline.label }}
+                    {{ form.headline(class="input") }}
+                    {% for error in form.headline.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.summary.label }}
+                    {{ form.summary(class="input") }}
+                </div>
+
+                <div class="field">
+                    {{ form.body.label }}
+                    {{ form.body(class="input", rows="9") }}
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        {{ form.video_url.label }}
+                        {{ form.video_url(class="input") }}
+                    </div>
+                    <div class="field">
+                        {{ form.mvp_player_id.label }}
+                        {{ form.mvp_player_id(class="input") }}
+                    </div>
+                </div>
+
+                <div class="field field--check">
+                    {{ form.is_published() }} <span>{{ form.is_published.label.text }}</span>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">{{ form.submit.label.text }}</button>
+                </div>
+            </form>
+        </section>
+
+        {# ------------------------------------------------------------------ #}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Quien marco goles y como rindio cada uno</h2>
+                <span class="text-muted">
+                    Goles, asistencias, CS (clean sheet) y AG (autogoles) por jugador.
+                </span>
+            </header>
+
+            {% for team, rows, side in [
+                (match.home_team, home_stats, 'home'),
+                (match.away_team, away_stats, 'away')
+            ] %}
+            <div class="report-team">
+                <h3 class="report-team-name">
+                    {% if team and team.has_crest %}
+                        <img src="{{ url_for('static', filename=team.crest_url) }}" alt="">
+                    {% endif %}
+                    {{ team.name if team else '—' }}
+                    <span class="chip">{{ rows|length }} fichas</span>
+                </h3>
+
+                {% if rows %}
+                <div class="table-scroll">
+                    <table class="data-table admin-table stat-table stat-table--{{ side }}">
+                        <thead>{{ stat_head(True) }}</thead>
+                        <tbody>
+                            {% for stat in rows %}
+                            {{ stat_row(stat, side, match, True) }}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="empty-state">Todavia no hay estadisticas cargadas para este equipo.</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+
+            {# --- Alta de una fila --- #}
+            <form method="post" action="{{ url_for('admin.match_stat_add', pk=match.id) }}" class="form-grid form-grid--tight" novalidate>
+                {{ stat_form.hidden_tag() }}
+                <h3 class="form-legend">Anadir ficha de un jugador</h3>
+
+                <div class="field">
+                    {{ stat_form.player_id.label }}
+                    {{ stat_form.player_id(class="input") }}
+                    {% for error in stat_form.player_id.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="stat-inputs">
+                    <div class="field"><label for="{{ stat_form.goals.id }}">Goles</label>{{ stat_form.goals(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.assists.id }}">Asist.</label>{{ stat_form.assists(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.clean_sheets.id }}">CS</label>{{ stat_form.clean_sheets(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.clean_sheet_seconds.id }}">Seg. sin gol</label>{{ stat_form.clean_sheet_seconds(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.own_goals.id }}">Autogoles</label>{{ stat_form.own_goals(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.yellow_cards.id }}">Amarillas</label>{{ stat_form.yellow_cards(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.red_cards.id }}">Rojas</label>{{ stat_form.red_cards(class="input") }}</div>
+                    <div class="field"><label for="{{ stat_form.minutes.id }}">Minutos</label>{{ stat_form.minutes(class="input") }}</div>
+                </div>
+
+                <div class="field">
+                    {{ stat_form.note.label }}
+                    {{ stat_form.note(class="input") }}
+                </div>
+
+                <div class="field field--check">
+                    {{ stat_form.is_mvp() }} <span>{{ stat_form.is_mvp.label.text }}</span>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">{{ stat_form.submit.label.text }}</button>
+                </div>
+            </form>
+        </section>
+
+        {# ------------------------------------------------------------------ #}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Resultado del partido</h2>
+            </header>
+
+            <div class="report-score">
+                <div class="report-score-side">
+                    <span class="report-score-name">{{ match.home_team.name if match.home_team else 'Local' }}</span>
+                    <span class="report-score-num">{{ match.home_score if match.home_score is not none else '—' }}</span>
+                </div>
+                <span class="report-score-sep">—</span>
+                <div class="report-score-side">
+                    <span class="report-score-name">{{ match.away_team.name if match.away_team else 'Visitante' }}</span>
+                    <span class="report-score-num">{{ match.away_score if match.away_score is not none else '—' }}</span>
+                </div>
+            </div>
+
+            {% if scorers %}
+            <div class="scorer-strip">
+                <span class="mono">GOLEADORES</span>
+                {% for stat in scorers %}
+                <span class="chip chip--{{ 'red' if stat.own_goals else 'lime' }}">
+                    {{ stat.player.username }}{% if stat.goals %} · {{ stat.goals }}{% endif %}{% if stat.own_goals %} AG{% endif %}
+                </span>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="text-muted">Aun no hay goles ni autogoles registrados en este informe.</p>
+            {% endif %}
+
+            <form method="post" action="{{ url_for('admin.match_sync_score', pk=match.id) }}"
+                  data-confirm="¿Actualizar el marcador a {{ computed[0] }} - {{ computed[1] }} con las estadisticas cargadas?">
+                {{ csrf_token }}
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">
+                        CALCULAR RESULTADO ({{ computed[0] }} - {{ computed[1] }})
+                    </button>
+                    <a class="btn btn--ghost" href="{{ url_for('admin.match_report', pk=match.id) }}">CANCELAR</a>
+                </div>
+            </form>
+            <p class="field-hint">
+                El resultado se calcula con los goles de cada jugador mas los autogoles
+                del rival. El partido pasa a «Finalizado» si estaba programado.
+            </p>
+        </section>
+    </div>
+</main>
+{% endblock %}

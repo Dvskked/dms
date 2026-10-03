@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}{{ team.name }} — Equipos · Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('equipos') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div class="admin-head-id">
+                <span class="crest crest--lg reveal" style="--team-color: {{ team.color or '#1bebf2' }}">
+                    {% if team.has_crest %}
+                        <img src="{{ url_for('static', filename=team.crest_url) }}" alt="Escudo de {{ team.name }}">
+                    {% else %}
+                        <span class="crest-initials">{{ team.initials }}</span>
+                    {% endif %}
+                </span>
+                <div>
+                    <span class="section-tag mono">04 · FICHA DE EQUIPO</span>
+                    <h1>{{ team.name }}</h1>
+                    <p class="text-muted">
+                        {% if team.division %}{{ team.division.name }}{% else %}Sin division asignada{% endif %}
+                        {% if team.short %} · {{ team.short }}{% endif %}
+                        {% if team.coach %} · DT {{ team.coach }}{% endif %}
+                        {% if team.captain %} · Capitan {{ team.captain }}{% endif %}
+                    </p>
+                </div>
+            </div>
+            <div class="admin-head-actions">
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource='equipos') }}">← VOLVER</a>
+                <a class="btn btn--sm" href="{{ url_for('admin.edit', resource='equipos', pk=team.id) }}">EDITAR DATOS</a>
+                <a class="btn btn--sm" href="{{ url_for('admin.create', resource='jugadores') }}">+ JUGADOR</a>
+            </div>
+        </header>
+
+        {# ---------------------------------------------------------------- #}
+        <div class="stat-quad reveal">
+            <div class="stat-tile"><span class="stat-num">{{ team.player_count }}</span><span class="stat-label">En plantilla</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ totals.goals }}</span><span class="stat-label">Goles</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ totals.assists }}</span><span class="stat-label">Asistencias</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ totals.clean_sheets }}</span><span class="stat-label">Clean sheets</span></div>
+        </div>
+
+        {# ---------------------------------------------------------------- #}
+        {% if standing %}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Posicion en la tabla</h2>
+                {% if team.division %}
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('site.stats') }}#{{ team.division.key }}">VER TABLA COMPLETA</a>
+                {% endif %}
+            </header>
+            <div class="stat-quad">
+                <div class="stat-tile stat-tile--accent"><span class="stat-num">{{ standing.position or '—' }}</span><span class="stat-label">Posicion</span></div>
+                <div class="stat-tile"><span class="stat-num">{{ standing.points }}</span><span class="stat-label">Puntos</span></div>
+                <div class="stat-tile"><span class="stat-num">{{ standing.goal_difference }}</span><span class="stat-label">Diferencia</span></div>
+                <div class="stat-tile"><span class="stat-num">{{ standing.goals_for }}</span><span class="stat-label">A favor</span></div>
+            </div>
+        </section>
+        {% endif %}
+
+        <div class="split-2">
+            {# ------------------------------------------------------------- #}
+            <section class="panel reveal">
+                <header class="panel-head">
+                    <h2>Escudo del equipo</h2>
+                </header>
+
+                <div class="crest-preview">
+                    <span class="crest crest--xl" style="--team-color: {{ team.color or '#1bebf2' }}">
+                        {% if team.has_crest %}
+                            <img src="{{ url_for('static', filename=team.crest_url) }}" alt="Escudo de {{ team.name }}">
+                        {% else %}
+                            <span class="crest-initials">{{ team.initials }}</span>
+                        {% endif %}
+                    </span>
+                    <p class="text-muted">
+                        {% if team.has_crest %}
+                            Logo cargado. Formatos: PNG, JPG, WEBP o SVG.
+                        {% else %}
+                            Sin logo: se muestra el monograma del club. Sube el logo oficial aqui.
+                        {% endif %}
+                    </p>
+                </div>
+
+                <form method="post" enctype="multipart/form-data" class="form-grid form-grid--tight" action="{{ url_for('admin.team_crest', pk=team.id) }}">
+                    {{ crest_form.hidden_tag() }}
+                    <div class="field">
+                        {{ crest_form.crest.label }}
+                        {{ crest_form.crest(class="input input--file", **{'data-preview': '#crest-preview'}) }}
+                        <img class="upload-preview-img is-hidden" id="crest-preview" alt="Vista previa del escudo">
+                        {% for error in crest_form.crest.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    </div>
+                    {% if team.has_crest %}
+                    <div class="field field--check">
+                        {{ crest_form.remove_crest() }} <span>{{ crest_form.remove_crest.label.text }}</span>
+                    </div>
+                    {% endif %}
+                    <div class="form-actions">
+                        <button class="btn btn--primary" type="submit">{{ crest_form.submit.label.text }}</button>
+                    </div>
+                </form>
+
+                {% if team.description %}
+                <div class="note-strip">
+                    <p>{{ team.description }}</p>
+                </div>
+                {% endif %}
+            </section>
+
+            {# ------------------------------------------------------------- #}
+            <section class="panel reveal">
+                <header class="panel-head">
+                    <h2>Sumar jugador a la plantilla</h2>
+                    <span class="chip">{{ team.squad_size }} en total</span>
+                </header>
+
+                <form method="post" class="form-grid form-grid--tight" action="{{ url_for('admin.team_add_player', pk=team.id) }}" novalidate>
+                    {{ player_form.hidden_tag() }}
+                    <div class="field">
+                        {{ player_form.username.label }}
+                        {{ player_form.username(class="input") }}
+                        {% for error in player_form.username.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                    </div>
+                    <div class="field-row">
+                        <div class="field">
+                            {{ player_form.position.label }}
+                            {{ player_form.position(class="input") }}
+                        </div>
+                        <div class="field">
+                            {{ player_form.number.label }}
+                            {{ player_form.number(class="input") }}
+                        </div>
+                    </div>
+                    <div class="field">
+                        {{ player_form.haxball_id.label }}
+                        {{ player_form.haxball_id(class="input") }}
+                    </div>
+                    <div class="field">
+                        {{ player_form.country.label }}
+                        {{ player_form.country(class="input") }}
+                    </div>
+                    <div class="field field--check">
+                        {{ player_form.is_captain() }} <span>{{ player_form.is_captain.label.text }}</span>
+                    </div>
+                    <div class="form-actions">
+                        <button class="btn btn--primary" type="submit">{{ player_form.submit.label.text }}</button>
+                    </div>
+                </form>
+            </section>
+        </div>
+
+        {# ---------------------------------------------------------------- #}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Plantilla</h2>
+                <span class="text-muted">Sacar a un jugador con historial lo deja inactivo y conserva sus partidos.</span>
+            </header>
+
+            {% if team.players %}
+            <div class="table-scroll">
+                <table class="data-table admin-table">
+                    <caption class="sr-only">Plantilla de {{ team.name }}</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" class="num">#</th>
+                            <th scope="col">Jugador</th>
+                            <th scope="col">Pos</th>
+                            <th scope="col">PJ</th>
+                            <th scope="col" class="num">G</th>
+                            <th scope="col" class="num">A</th>
+                            <th scope="col" class="num">CS</th>
+                            <th scope="col" class="num">AG</th>
+                            <th scope="col">Estado</th>
+                            <th scope="col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for player in team.players|sort(attribute='number') %}
+                        <tr class="{% if not player.is_active %}is-muted{% endif %}">
+                            <td class="num mono">{{ player.number or '—' }}</td>
+                            <td>
+                                <span class="cell-text">
+                                    {{ player.username }}
+                                    {% if player.is_captain %}<span class="chip chip--lime">C</span>{% endif %}
+                                </span>
+                            </td>
+                            <td class="mono">{{ player.position or '—' }}</td>
+                            <td class="mono">{{ player.matches }}</td>
+                            <td class="num mono">{{ player.goals }}</td>
+                            <td class="num mono">{{ player.assists }}</td>
+                            <td class="num mono">{{ player.clean_sheets }}</td>
+                            <td class="num mono">{{ player.own_goals }}</td>
+                            <td>
+                                {% if player.is_active %}
+                                <span class="chip chip--lime">ACTIVO</span>
+                                {% else %}
+                                <span class="chip">HISTORICO</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="row-actions">
+                                    <a class="btn btn--sm" href="{{ url_for('admin.edit', resource='jugadores', pk=player.id) }}">EDITAR</a>
+                                    <form method="post" action="{{ url_for('admin.team_remove_player', pk=team.id, player_id=player.id) }}"
+                                          data-confirm="¿Sacar a «{{ player.username }}» de la plantilla?">
+                                        {{ csrf_token }}
+                                        <button class="btn btn--sm btn--danger" type="submit">QUITAR</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="empty-state">
+                <strong>La plantilla esta vacia.</strong>
+                Usa el formulario de al lado para sumar el primer jugador.
+            </p>
+            {% endif %}
+        </section>
+
+        {# ---------------------------------------------------------------- #}
+        {% if matches %}
+        <section class="panel reveal">
+            <header class="panel-head">
+                <h2>Ultimos partidos</h2>
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource='calendario', q=team.name) }}">VER CALENDARIO</a>
+            </header>
+            <div class="table-scroll">
+                <table class="data-table admin-table">
+                    <caption class="sr-only">Partidos de {{ team.name }}</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" class="num">J</th>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Partido</th>
+                            <th scope="col">Resultado</th>
+                            <th scope="col">Informe</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for match in matches %}
+                        <tr>
+                            <td class="num mono">{{ match.journey }}</td>
+                            <td class="mono">{{ match.played_on|fdate }}</td>
+                            <td class="cell-text">{{ match.headline }}</td>
+                            <td class="mono">{{ match.score_text }}</td>
+                            <td>
+                                {% if match.report %}
+                                <a class="btn btn--sm" href="{{ url_for('admin.match_report', pk=match.id) }}">VER INFORME</a>
+                                {% else %}
+                                <a class="btn btn--sm btn--primary" href="{{ url_for('admin.match_report', pk=match.id) }}">+ INFORME</a>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {# ---------------------------------------------------------------- #}
+        <section class="panel panel--danger reveal">
+            <header class="panel-head">
+                <h2>Zonadangerosa</h2>
+            </header>
+            <p class="text-muted">
+                Al eliminar <strong>{{ team.name }}</strong> se borran su plantilla
+                ({{ team.squad_size }} jugadores), sus partidos, sus informes y sus
+                estadisticas. No se puede deshacer.
+            </p>
+            <form method="post" action="{{ url_for('admin.delete', resource='equipos', pk=team.id) }}"
+                  data-confirm="¿Eliminar «{{ team.name }}» y todo su historial? No se puede deshacer.">
+                {{ csrf_token }}
+                <button class="btn btn--danger" type="submit">ELIMINAR EQUIPO</button>
+            </form>
+        </section>
+    </div>
+</main>
+{% endblock %}

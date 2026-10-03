@@ -15,6 +15,17 @@
 {% macro row_actions(row, resource) %}
 {%- set flag = toggle_field(row)|trim -%}
 <div class="row-actions">
+    {% if resource == 'equipos' %}
+    <a class="btn btn--sm btn--primary" href="{{ url_for('admin.team_detail', pk=row.id) }}">FICHA</a>
+    {% endif %}
+
+    {% if resource == 'calendario' %}
+    <a class="btn btn--sm {% if row.report %}btn--primary{% endif %}"
+       href="{{ url_for('admin.match_report', pk=row.id) }}">
+        {{ 'INFORME' if row.report else '+ INFORME' }}
+    </a>
+    {% endif %}
+
     <a class="btn btn--sm" href="{{ url_for('admin.edit', resource=resource, pk=row.id) }}">EDITAR</a>
 
     {% if flag %}
@@ -52,6 +63,14 @@
 {% macro cell(row, field, resource) %}
 {%- if field == 'actions' -%}
     {{ row_actions(row, resource) }}
+{%- elif field == 'crest' -%}
+    {%- if row.crest -%}
+    <span class="crest crest--sm">
+        <img src="{{ url_for('static', filename=row.crest_url) }}" alt="Escudo de {{ row.name }}">
+    </span>
+    {%- else -%}
+    <span class="text-muted">Sin logo</span>
+    {%- endif -%}
 {%- else -%}
 {%- set value = row|attr(field) -%}
 {%- if value is undefined or value is none -%}

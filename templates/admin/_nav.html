@@ -49,6 +49,12 @@
     <a class="admin-nav-item {% if active == 'usuarios' %}active{% endif %}" href="{{ url_for('admin.list_resource', resource='usuarios') }}">
         <span aria-hidden="true">✎</span> {{ resources['usuarios'].title|upper }}
     </a>
+    <a class="admin-nav-item {% if active == 'correos' %}active{% endif %}" href="{{ url_for('admin.email_log') }}">
+        <span aria-hidden="true">✉</span> CORREOS
+    </a>
+    <a class="admin-nav-item {% if active == 'sugerencias' %}active{% endif %}" href="{{ url_for('admin.suggestions') }}">
+        <span aria-hidden="true">✦</span> SUGERENCIAS
+    </a>
     <a class="admin-nav-item {% if active == 'ajustes' %}active{% endif %}" href="{{ url_for('admin.settings') }}">
         <span aria-hidden="true">⚙</span> AJUSTES DEL SITIO
     </a>

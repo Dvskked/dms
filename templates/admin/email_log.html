@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Correos — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">CORREO</span>
+                <h1>Correos enviados</h1>
+                <p class="text-muted">
+                    Bienvenidas, cambios de contrasena y avisos de la liga.
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                <form class="search-form" method="get" action="{{ url_for('admin.email_log') }}">
+                    <input class="input" type="search" name="q" value="{{ term }}" placeholder="Buscar por correo o asunto…">
+                    <button class="btn btn--sm" type="submit">BUSCAR</button>
+                </form>
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.dashboard') }}">← VOLVER</a>
+            </div>
+        </header>
+
+        <div class="stat-quad reveal">
+            <div class="stat-tile stat-tile--accent"><span class="stat-num">{{ sent }}</span><span class="stat-label">Enviados</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ failed }}</span><span class="stat-label">Fallidos</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ rows|length }}</span><span class="stat-label">En la vista</span></div>
+            <div class="stat-tile"><span class="stat-num">{{ rows|selectattr('template', 'equalto', 'welcome')|list|length }}</span><span class="stat-label">Bienvenidas</span></div>
+        </div>
+
+        <section class="panel reveal">
+            {% if rows %}
+            <div class="table-scroll">
+                <table class="data-table admin-table">
+                    <caption class="sr-only">Historial de correos</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Destinatario</th>
+                            <th scope="col">Asunto</th>
+                            <th scope="col">Tipo</th>
+                            <th scope="col">Estado</th>
+                            <th scope="col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            <td class="mono">{{ row.sent_at|fdate('%d/%m/%Y %H:%M') if row.sent_at else '—' }}</td>
+                            <td class="cell-text">{{ row.target }}</td>
+                            <td class="cell-text">{{ row.subject }}</td>
+                            <td class="mono">{{ row.template }}</td>
+                            <td>
+                                {% if row.status == 'sent' %}
+                                <span class="chip chip--lime">ENVIADO</span>
+                                {% elif row.status == 'failed' %}
+                                <span class="chip chip--red">FALLIDO</span>
+                                {% else %}
+                                <span class="chip">OMITIDO</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if row.status == 'failed' %}
+                                <form method="post" action="{{ url_for('admin.email_log_resend', pk=row.id) }}">
+                                    {{ csrf_token }}
+                                    <button class="btn btn--sm" type="submit">REENVAR</button>
+                                </form>
+                                {% else %}
+                                <span class="text-muted">—</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="empty-state">
+                <strong>Todavia no se envio ningun correo.</strong>
+                <p>Se registraran aqui las bienvenidas y los avisos de contrasena.</p>
+            </p>
+            {% endif %}
+        </section>
+    </div>
+</main>
+{% endblock %}
