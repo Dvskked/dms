@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block title %}{{ app_name }} — {{ site_settings.league_name or 'Liga de HaxBall X5' }}{% endblock %}
+{% block description %}{{ site_settings.league_description or 'Sitio oficial de The Diamonds League, liga competitiva de HaxBall X5.' }}{% endblock %}
+{% block og_title %}{{ app_name }}{% endblock %}
+{% block og_description %}{{ site_settings.league_description or 'Liga competitiva de HaxBall X5.' }}{% endblock %}
+
+{% block body_class %}page-home{% endblock %}
+
+{% block content %}
+<main id="main">
+    {% include "site/sections/_hero.html" %}
+    {% include "site/sections/_liga.html" %}
+    {% include "site/sections/_pubs.html" %}
+    {% include "site/sections/_museo.html" %}
+    {% include "site/sections/_noticias.html" %}
+    {% include "site/sections/_anuncios.html" %}
+    {% include "site/sections/_alianzas.html" %}
+    {% include "site/sections/_redes.html" %}
+    {% include "site/sections/_equipo.html" %}
+    {% include "site/sections/_live.html" %}
+    {% include "site/sections/_donacion.html" %}
+</main>
+{% endblock %}

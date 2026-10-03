@@ -1,0 +1,47 @@
+{# ============================================================================
+   EQUIPO ADMINISTRACION
+   ========================================================================= #}
+<section class="section section-anchor" id="equipo" data-section="equipo">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">08</div>
+        <div>
+            <span class="section-tag">EQUIPO ADMINISTRACION</span>
+            <h2>Quien mantiene la liga</h2>
+        </div>
+        <p>
+            El equipo que organiza torneos, arbitra, disena y mantiene la competicion
+            en marcha durante todo el ano.
+        </p>
+    </div>
+
+    <div class="staff-grid">
+        {% for member in staff %}
+        <article class="staff-card reveal {% if member.is_leader %}is-leader{% endif %}">
+            <div class="staff-avatar">
+                {% if member.avatar %}<img src="{{ url_for('static', filename=member.avatar) }}" alt="">
+                {% else %}{{ member.initials }}{% endif %}
+            </div>
+            <span class="staff-role mono">{{ member.role|upper }}{% if member.title %} · {{ member.title }}{% endif %}</span>
+            <h4>{{ member.name }}</h4>
+            {% if member.nickname %}<p class="staff-nick">@{{ member.nickname }}</p>{% endif %}
+            <p class="staff-bio">{{ (member.bio or '')|truncate(120) }}</p>
+            <div class="staff-links">
+                {% for tag in member.tag_list %}<span class="chip">{{ tag|upper }}</span>{% endfor %}
+            </div>
+            <div class="staff-links">
+                {% if member.discord %}<span class="mono">DISCORD {{ member.discord }}</span>{% endif %}
+                {% if member.email %}<a class="mono" href="mailto:{{ member.email }}">{{ member.email }}</a>{% endif %}
+            </div>
+        </article>
+        {% else %}
+        <p class="empty-state" style="grid-column:1/-1"><strong>Sin equipo cargado</strong><p>El administrador todavia no publico a los responsables.</p></p>
+        {% endfor %}
+    </div>
+
+    <div class="staff-cta reveal">
+        <p class="text-muted">¿Quieres formar parte del equipo de la liga o de un club?</p>
+        {% for link in socials_by_owner.get('liga', []) + socials_by_owner.get('admin', []) %}
+        <a class="btn btn--sm btn--primary" href="{{ link.url }}" target="_blank" rel="noopener noreferrer">CONTACTO {{ link.platform|upper }}</a>
+        {% endfor %}
+    </div>
+</section>

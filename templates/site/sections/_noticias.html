@@ -1,0 +1,47 @@
+{# ============================================================================
+   NOTICIAS
+   ========================================================================= #}
+<section class="section section-anchor" id="noticias" data-section="noticias">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">04</div>
+        <div>
+            <span class="section-tag">NOTICIAS</span>
+            <h2>Noticias de la liga</h2>
+        </div>
+        <p>
+            Comunicados, bilan de jornadas, ajustes de standings y todo lo que pasa
+            dentro y fuera de la competicion.
+        </p>
+    </div>
+
+    {% if news %}
+    <div class="article-grid">
+        {% for item in news %}
+        <article class="article-card reveal {% if loop.first %}is-lead{% endif %}" data-lightbox
+                 data-full="{{ item.cover }}" data-caption="{{ item.title }}">
+            <a class="article-media" href="{{ url_for('site.article_detail', slug=item.slug) }}">
+                {% if item.cover %}
+                <img src="{{ url_for('static', filename=item.cover) }}" alt="{{ item.title }}" loading="lazy">
+                {% else %}
+                    <span class="article-media-fallback" aria-hidden="true">{{ item.title[:2]|upper }}</span>
+                {% endif %}
+                {% if item.is_pinned %}<span class="article-flag">FIJADA</span>{% endif %}
+            </a>
+            <div class="article-body">
+                <p class="article-meta">
+                    <span class="mono">{{ item.published_at.strftime('%d/%m/%Y') if item.published_at else '—' }}</span>
+                    <span class="dot" aria-hidden="true"></span>
+                    <span>{{ item.author_label }}</span>
+                    {% if item.views %}<span class="dot" aria-hidden="true"></span><span class="mono">{{ item.views }} VISTAS</span>{% endif %}
+                </p>
+                <h3><a href="{{ url_for('site.article_detail', slug=item.slug) }}">{{ item.title }}</a></h3>
+                <p class="article-excerpt">{{ (item.summary or item.body)|excerpt(150) }}</p>
+                <a class="article-more" href="{{ url_for('site.article_detail', slug=item.slug) }}">LEER NOTICIA <span aria-hidden="true">→</span></a>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state reveal"><strong>Sin noticias</strong><p>Cuando la liga publique novedades apareceran aqui.</p></p>
+    {% endif %}
+</section>

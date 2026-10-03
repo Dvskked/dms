@@ -1,0 +1,185 @@
+{# ============================================================================
+   Header de la pagina publica.
+   Orden de navegacion pedido: LIGA · PUBS · MUSEO · NOTICIAS · ANUNCIOS ·
+   ALIANZAS · REDES · EQUIPO, luego LIVE FUTBOL, DONACION y la tuerca.
+   ========================================================================= #}
+
+{# --- Datos del menu lateral del admin, para el boton de acceso rapido --- #}
+{% set admin_links = current_user.is_staff if current_user.is_authenticated else False %}
+
+<header class="topbar">
+    {# --- Marca --- #}
+    <a class="topbar-brand" href="{{ url_for('site.index') }}" aria-label="{{ app_name }} — inicio">
+        <img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="" width="42" height="42" loading="eager">
+        <span>
+            <strong>THE DIAMONDS LEAGUE</strong>
+            <small>HAXBALL X5</small>
+        </span>
+    </a>
+
+    {# --- Navegacion principal --- #}
+    <nav class="main-nav" aria-label="Navegación principal de la liga">
+        <a href="#liga"     data-spy-link>LIGA</a>
+        <a href="#pubs"    data-spy-link>PUBS</a>
+        <a href="#museo"   data-spy-link>MUSEO</a>
+        <a href="#noticias" data-spy-link>NOTICIAS</a>
+        <a href="#anuncios" data-spy-link>ANUNCIOS</a>
+        <a href="#alianzas" data-spy-link>ALIANZAS</a>
+        <a href="#redes"   data-spy-link>REDES</a>
+        <a href="#equipo"  data-spy-link>EQUIPO</a>
+    </nav>
+
+    {# --- Acciones de la derecha --- #}
+    <div class="topbar-right">
+        <a class="header-live" href="#live" title="Live de futbol">
+            <i class="live-pulse" aria-hidden="true"></i>
+            <span>LIVE FUTBOL</span>
+        </a>
+        <a class="header-donate" href="#donacion" title="Donacion">
+            <span>DONAR</span>
+        </a>
+
+        {% if current_user.is_authenticated %}
+            {# --- Tuerca de configuracion --- #}
+            <div class="gear">
+                <button class="gear-button" type="button" aria-expanded="false" aria-haspopup="true" aria-controls="gear-menu"
+                        aria-label="Abrir configuracion de la cuenta">
+                    <span class="avatar" aria-hidden="true">
+                        {% if current_user.avatar %}
+                            <img src="{{ url_for('static', filename=current_user.avatar) }}" alt="">
+                        {% else %}{{ current_user.initials }}{% endif %}
+                    </span>
+                    <span class="gear-label">{{ current_user.label }}</span>
+                    <span class="gear-dot {% if prefs.admin_mode %}admin{% endif %}" title="Modo administrador"></span>
+                    <span class="gear-dot {% if prefs.premium_mode %}on{% endif %}" title="Modo premium"></span>
+                    <span class="icon" aria-hidden="true">
+                        <svg class="gear-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>
+                    </span>
+                </button>
+
+                <div class="gear-menu" id="gear-menu" role="menu" aria-label="Configuracion de la cuenta">
+                    <div class="gear-head">
+                        <span class="avatar" aria-hidden="true">
+                            {% if current_user.avatar %}
+                                <img src="{{ url_for('static', filename=current_user.avatar) }}" alt="">
+                            {% else %}{{ current_user.initials }}{% endif %}
+                        </span>
+                        <div>
+                            <strong>{{ current_user.label }}</strong>
+                            <span>@{{ current_user.username }} · {{ current_user.role|upper }}</span>
+                        </div>
+                    </div>
+
+                    <div class="gear-section">
+                        <p class="gear-title">Cuenta</p>
+                        <a class="gear-item" href="{{ url_for('auth.profile') }}" role="menuitem">
+                            <span class="gi-icon" aria-hidden="true">&#9998;</span>
+                            <span class="gi-body"><strong>Editar perfil</strong><small>Nombre, correo, avatar y bio</small></span>
+                        </a>
+                        <a class="gear-item" href="{{ url_for('auth.change_password') }}" role="menuitem">
+                            <span class="gi-icon" aria-hidden="true">&#128273;</span>
+                            <span class="gi-body"><strong>Cambiar contrasena</strong><small>Actualiza tu clave de acceso</small></span>
+                        </a>
+                        <a class="gear-item" href="{{ url_for('auth.google') }}" role="menuitem">
+                            <span class="gi-icon" aria-hidden="true">G</span>
+                            <span class="gi-body">
+                                <strong>Google{% if prefs.google_linked %} · vinculado{% endif %}</strong>
+                                <small>{% if prefs.google_linked %}{{ current_user.google_email }}{% else %}Vincula tu cuenta de Google{% endif %}</small>
+                            </span>
+                        </a>
+                    </div>
+
+                    <div class="gear-section">
+                        <p class="gear-title">Modos</p>
+                        <form method="post" action="{{ url_for('auth.toggle_mode', mode='admin') }}" class="gear-item" role="menuitem">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <span class="gi-icon" aria-hidden="true">&#9881;</span>
+                            <span class="gi-body">
+                                <strong>Modo administrador</strong>
+                                <small>{% if not prefs.can_admin_mode %}Requiere cuenta admin{% elif prefs.admin_mode %}Activado{% else %}Desactivado{% endif %}</small>
+                            </span>
+                            {% if prefs.can_admin_mode %}
+                                <span class="switch switch--admin" role="switch" aria-checked="{{ 'true' if prefs.admin_mode else 'false' }}"
+                                      aria-label="Alternar modo administrador" tabindex="-1"></span>
+                            {% else %}
+                                <span class="text-muted mono" style="font-size:.6rem">&#128274;</span>
+                            {% endif %}
+                        </form>
+
+                        <form method="post" action="{{ url_for('auth.toggle_mode', mode='premium') }}" class="gear-item" role="menuitem">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <span class="gi-icon" aria-hidden="true">&#9733;</span>
+                            <span class="gi-body">
+                                <strong>Modo premium</strong>
+                                <small>{% if not prefs.can_premium_mode %}Requiere cuenta premium{% elif prefs.premium_mode %}Activado{% else %}Desactivado{% endif %}</small>
+                            </span>
+                            {% if prefs.can_premium_mode %}
+                                <span class="switch" role="switch" aria-checked="{{ 'true' if prefs.premium_mode else 'false' }}"
+                                      aria-label="Alternar modo premium" tabindex="-1"></span>
+                            {% else %}
+                                <span class="text-muted mono" style="font-size:.6rem">&#128274;</span>
+                            {% endif %}
+                        </form>
+
+                        {% if admin_links %}
+                        <a class="gear-item" href="{{ url_for('admin.dashboard') }}" role="menuitem">
+                            <span class="gi-icon" aria-hidden="true">&#9638;</span>
+                            <span class="gi-body"><strong>Panel de administracion</strong><small>Gestionar la liga completa</small></span>
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    <div class="gear-section">
+                        <p class="gear-title">Sesion</p>
+                        <form method="post" action="{{ url_for('auth.logout') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="gear-item danger" type="submit" role="menuitem">
+                                <span class="gi-icon" aria-hidden="true">&#9099;</span>
+                                <span class="gi-body"><strong>Cerrar sesion</strong><small>Salir de este dispositivo</small></span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <div class="auth-nav">
+                <a class="btn btn--ghost" href="{{ url_for('auth.login') }}">INGRESAR</a>
+                <a class="btn btn--primary" href="{{ url_for('auth.register') }}">REGISTRARSE</a>
+            </div>
+        {% endif %}
+
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-label="Abrir menú" aria-controls="mobile-menu">
+            <span></span><span></span>
+        </button>
+    </div>
+</header>
+
+{# --- Menu movil: replica completa del header --- #}
+<div class="mobile-menu" id="mobile-menu" aria-hidden="true">
+    <a class="mm-head" href="{{ url_for('site.index') }}">{{ app_name }} · HaxBall X5</a>
+    <a href="#liga">LIGA</a>
+    <a href="#pubs">PUBS</a>
+    <a href="#museo">MUSEO</a>
+    <a href="#noticias">NOTICIAS</a>
+    <a href="#anuncios">ANUNCIOS — NOVEDADES</a>
+    <a href="#alianzas">ALIANZAS</a>
+    <a href="#redes">REDES SOCIALES</a>
+    <a href="#equipo">EQUIPO ADMINISTRACION</a>
+    <a href="#live" data-accent="live">LIVE FUTBOL</a>
+    <a href="#donacion">DONACION</a>
+    {% if current_user.is_authenticated %}
+        <a href="{{ url_for('auth.profile') }}">EDITAR PERFIL</a>
+        <a href="{{ url_for('auth.change_password') }}">CAMBIAR CONTRASENA</a>
+        <a href="{{ url_for('auth.google') }}">GOOGLE</a>
+        {% if current_user.is_admin %}<a href="{{ url_for('admin.dashboard') }}">PANEL ADMIN</a>{% endif %}
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:contents">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="gear-item danger" style="min-height:52px;border-bottom:1px solid var(--line);width:100%">
+                <span class="gi-body"><strong style="color:var(--red)">CERRAR SESION</strong></span>
+            </button>
+        </form>
+    {% else %}
+        <a href="{{ url_for('auth.login') }}">INGRESAR</a>
+        <a href="{{ url_for('auth.register') }}">REGISTRARSE</a>
+    {% endif %}
+</div>

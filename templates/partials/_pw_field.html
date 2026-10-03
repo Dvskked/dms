@@ -1,0 +1,16 @@
+{# ============================================================================
+   Campo de contrasena con boton de ver/ocultar.
+   Uso:  {{ pw_field(form.password, 'Contrasena') }}
+   ========================================================================= #}
+{% macro pw_field(field, hint='') %}
+<div class="field">
+    {{ field.label }}
+    <span class="pw-wrap">
+        {{ field(class="input", autocomplete="current-password") }}
+        <button class="pw-toggle" type="button" data-pw-toggle="{{ field.id }}"
+                aria-label="Ver contrasena" aria-pressed="false">VER</button>
+    </span>
+    {% for error in field.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+    {% if hint %}<p class="field-hint">{{ hint }}</p>{% endif %}
+</div>
+{% endmacro %}

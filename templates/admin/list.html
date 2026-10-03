@@ -1,0 +1,73 @@
+﻿{% extends "base.html" %}
+{% from "admin/_macros.html" import cell with context %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}{{ cfg.title }} — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav(resource) }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">{{ cfg.icon }}</span>
+                <h1>{{ cfg.title }}</h1>
+                <p class="text-muted">{{ cfg.subtitle }}</p>
+            </div>
+            <div class="admin-head-actions">
+                <form class="search-form" method="get" action="{{ url_for('admin.list_resource', resource=resource) }}">
+                    <input class="input" type="search" name="q" value="{{ term }}" placeholder="Buscar en {{ cfg.title|lower }}…">
+                    <button class="btn btn--sm" type="submit">BUSCAR</button>
+                </form>
+                <a class="btn btn--sm btn--primary" href="{{ url_for('admin.create', resource=resource) }}">+ NUEVO</a>
+            </div>
+        </header>
+
+        <section class="panel reveal">
+            <div class="table-scroll">
+                <table class="data-table admin-table">
+                    <caption class="sr-only">{{ cfg.title }}</caption>
+                    <thead>
+                        <tr>
+                            {% for field in cfg.fields %}
+                            <th scope="col" {% if field in ('id',) %}class="num"{% endif %}>{{ field|replace('_', ' ')|upper }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr>
+                            {% for field in cfg.fields %}
+                            <td {% if field == 'id' %}class="num mono"{% endif %}>{{ cell(row, field, resource) }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="{{ cfg.fields|length }}" class="text-muted" style="padding:48px;text-align:center">
+                                <strong>Sin registros</strong>
+                                <p>{% if term %}Ningun resultado para “{{ term }}”.{% else %}Crea el primer registro con el boton “+ NUEVO”.{% endif %}</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            {% if meta.pages > 1 %}
+            <nav class="pagination" aria-label="Paginacion">
+                {% set base = request.args.to_dict() %}
+                {% if meta.page > 1 %}
+                <a class="btn btn--sm" href="{{ url_for('admin.list_resource', resource=resource, q=term, page=meta.page - 1) }}">← ANTERIOR</a>
+                {% endif %}
+                <span class="mono">PAGINA {{ meta.page }} DE {{ meta.pages }} · {{ meta.total }} REGISTROS</span>
+                {% if meta.page < meta.pages %}
+                <a class="btn btn--sm" href="{{ url_for('admin.list_resource', resource=resource, q=term, page=meta.page + 1) }}">SIGUIENTE →</a>
+                {% endif %}
+            </nav>
+            {% endif %}
+        </section>
+    </div>
+</main>
+{% endblock %}

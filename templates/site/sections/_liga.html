@@ -1,0 +1,402 @@
+{# ============================================================================
+   LIGA — formato, fechas, tabla, jugadores, equipos y reglas
+   Los modulos se organizan en pestanas; cada division se muestra completa
+   dentro del modulo activo (el sitio tiene divisiones apiladas, no ocultas).
+   ========================================================================= #}
+<section class="section section-anchor" id="liga" data-section="liga">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">01</div>
+        <div>
+            <span class="section-tag">LIGA</span>
+            <h2>{{ season.label if season else 'La liga' }} completa</h2>
+        </div>
+        <p>
+            Formato, calendario, tabla de posiciones, goleadores, asistidores, porteros,
+            plantillas y reglamento. Todo en un solo lugar.
+        </p>
+    </div>
+
+    {% if divisions|length > 1 %}
+    <nav class="anchor-chips reveal" aria-label="Ir a una división">
+        {% for div in divisions %}
+        <a href="#div-{{ div.key }}" class="chip {% if loop.first %}active{% endif %}">{{ div.short }} · {{ div.name }}</a>
+        {% endfor %}
+    </nav>
+    {% endif %}
+
+    <div class="tabs reveal" role="tablist" aria-label="Módulos de la liga" data-tabs-scope="liga" data-tabs="liga">
+        {% for key, label, hint in [
+            ('formato',   'FORMATO',   'Division y fases'),
+            ('fechas',    'FECHAS',    'Calendario oficial'),
+            ('tabla',     'TABLA',     'Clasificacion'),
+            ('jugadores', 'JUGADORES', 'Estadisticas'),
+            ('equipos',   'EQUIPOS',   'Plantillas'),
+            ('reglas',    'REGLAS',    'Reglamento')
+        ] %}
+        <button class="tab {% if loop.first %}active{% endif %}" type="button" role="tab"
+                data-tab-target="liga:mod-{{ key }}" aria-selected="{{ 'true' if loop.first else 'false' }}">
+            <span>{{ label }}</span><small>{{ hint }}</small>
+        </button>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  FORMATO                                                           #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel active" data-tab-panel="liga:mod-formato">
+        {% for bundle in divisions_data %}
+        {% set div = bundle.division %}
+        <div class="format-board reveal" id="div-{{ div.key }}" style="margin-bottom:22px">
+            <div class="format-board-head">
+                <span>{{ app_name }}</span>
+                <h3>{{ div.name|upper }} &middot; {{ season.label|upper if season else 'TEMPORADA' }}</h3>
+                <p>{{ div.description }}</p>
+            </div>
+
+            <div class="stat-quad">
+                <div><small>EQUIPOS</small><strong>{{ '%02d'|format(div.teams_count) }}</strong></div>
+                <div><small>JORNADAS</small><strong>{{ '%02d'|format(div.journeys_count) }}</strong></div>
+                <div><small>PLAYOFFS</small><strong>{{ '%02d'|format(div.playoffs_slots) }}</strong></div>
+                <div><small>PARTIDOS</small><strong>{{ '%02d'|format(bundle.total_matches) }}</strong></div>
+            </div>
+
+            <div class="phase-grid">
+                {% for phase in div.phases %}
+                <article>
+                    <span>{{ phase.tag }}</span>
+                    <h4>{{ phase.title }}</h4>
+                    <p>{{ phase.body }}</p>
+                    {% if phase.highlight %}<b>{{ phase.highlight }}</b>{% endif %}
+                </article>
+                {% endfor %}
+            </div>
+
+            {% for kind, klass, label in [('relegation', 'relegation', 'DESCENSO'), ('promotion', '', 'ASCENSOS')] %}
+                {% set moves = div.moves|selectattr('kind', 'equalto', kind)|list %}
+                {% if moves %}
+                <div class="move-board {{ klass }}">
+                    <span>{{ label }}</span>
+                    <div class="move-grid">
+                        {% for move in moves %}
+                        <article>
+                            <small>{{ move.tag }}</small>
+                            <strong>{{ move.title }}</strong>
+                            <p>{{ move.body }}</p>
+                        </article>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+            {% endfor %}
+
+            <div class="match-config">
+                <div><small>MODALIDAD</small><strong>{{ div.modality }}</strong></div>
+                <div><small>DURACION</small><strong>{{ div.duration }}</strong></div>
+                <div><small>MAPA</small><strong>{{ div.map_name }}</strong></div>
+                <div><small>SERVIDOR</small><strong>{{ div.server }}</strong></div>
+            </div>
+
+            <div class="rule-mini-grid">
+                {% for rule in div.base_rules %}
+                <article class="rule-mini">
+                    <span>{{ '%02d'|format(rule.position) }}</span>
+                    <div>
+                        <strong>{{ rule.title }}</strong>
+                        <p>{{ rule.body }}</p>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+
+            {% if div.schedule_note %}
+            <p class="note-strip"><span>NOTA</span>{{ div.schedule_note }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  FECHAS                                                            #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel" data-tab-panel="liga:mod-fechas">
+        {% for bundle in divisions_data %}
+        {% set div = bundle.division %}
+        <div class="division-block" id="fechas-{{ div.key }}" data-tabs-scope="liga-f-{{ div.key }}">
+            <div class="division-block-head reveal">
+                <span class="div-tag">{{ div.short }}</span>
+                <h3>{{ div.name|upper }}</h3>
+                <small class="mono text-muted">{{ div.modality }} · {{ div.server }}</small>
+            </div>
+
+            {% if bundle.calendar %}
+            <div class="journey-tabs" role="tablist" aria-label="Jornadas de {{ div.name }}" data-tabs="liga-f-{{ div.key }}">
+                {% for item in bundle.calendar %}
+                <button class="journey-tab {% if loop.first %}active{% endif %}" type="button" role="tab"
+                        data-tab-target="liga-f-{{ div.key }}:j-{{ item.journey }}"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}">
+                    <span>JORNADA {{ item.journey }}</span><small>{{ item.range }}</small>
+                </button>
+                {% endfor %}
+            </div>
+
+            {% for item in bundle.calendar %}
+            <div class="tabpanel {% if loop.first %}active{% endif %}" data-tab-panel="liga-f-{{ div.key }}:j-{{ item.journey }}">
+                <div class="journey-head reveal">
+                    <div>
+                        <small>JORNADA {{ item.journey }}</small>
+                        <h3>{{ item.matches[0].stage if item.matches else 'Liga regular' }}</h3>
+                    </div>
+                    <span>{{ item.range }}</span>
+                </div>
+
+                <div class="match-list">
+                    {% for day, day_matches in (item.matches|groupby('played_on')) %}
+                    <div class="match-day">
+                        <p class="match-day-label">
+                            <i></i>{{ day.strftime('%A %d de %B de %Y') if day else 'Fecha por definir' }}
+                            <em>{{ day_matches|length }} {{ 'PARTIDO' if day_matches|length == 1 else 'PARTIDOS' }}</em>
+                        </p>
+                        {% for match in day_matches %}
+                        <article class="match-row {% if match.status == 'live' %}is-live{% endif %}">
+                            <span class="kickoff">{{ match.kickoff or '--:--' }}</span>
+                            <div class="side">
+                                <span class="team-crest">
+                                    {% if match.home_team.crest %}<img src="{{ url_for('static', filename=match.home_team.crest) }}" alt="">
+                                    {% else %}{{ match.home_team.initials[:2] if match.home_team else '??' }}{% endif %}
+                                </span>
+                                <span>{{ match.home_team.name if match.home_team else 'Por definir' }}</span>
+                            </div>
+                            <span class="match-score {% if not match.is_finished %}pending{% endif %}">
+                                {{ match.score_text if match.is_finished else ('EN VIVO' if match.status == 'live' else 'VS') }}
+                            </span>
+                            <div class="side right">
+                                <span>{{ match.away_team.name if match.away_team else 'Por definir' }}</span>
+                                <span class="team-crest">
+                                    {% if match.away_team.crest %}<img src="{{ url_for('static', filename=match.away_team.crest) }}" alt="">
+                                    {% else %}{{ match.away_team.initials[:2] if match.away_team else '??' }}{% endif %}
+                                </span>
+                            </div>
+                            {% if match.notes or match.room_url or match.replay_url %}
+                            <p class="match-note">
+                                {% if match.notes %}<span>{{ match.notes }}</span>{% endif %}
+                                {% if match.room_url %}<a class="text-cyan" href="{{ match.room_url }}" target="_blank" rel="noopener noreferrer">SALA</a>{% endif %}
+                                {% if match.replay_url %}<a class="text-cyan" href="{{ match.replay_url }}" target="_blank" rel="noopener noreferrer">REPLAY</a>{% endif %}
+                            </p>
+                            {% endif %}
+                        </article>
+                        {% endfor %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <p class="empty-state"><strong>Sin calendario</strong><p>Esta division aun no tiene partidos programados.</p></p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  TABLA                                                             #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel" data-tab-panel="liga:mod-tabla">
+        {% for bundle in divisions_data %}
+        {% set div = bundle.division %}
+        <div class="division-block" id="tabla-{{ div.key }}">
+            <div class="division-block-head reveal">
+                <span class="div-tag">{{ div.short }}</span>
+                <h3>{{ div.name|upper }}</h3>
+                <small class="mono text-muted">{{ bundle.teams|length }} EQUIPOS</small>
+            </div>
+
+            <div class="table-scroll reveal">
+                <table class="data-table">
+                    <caption class="sr-only">Tabla de posiciones de {{ div.name }}</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col" class="num">#</th>
+                            <th scope="col">Equipo</th>
+                            <th scope="col" class="num">PJ</th>
+                            <th scope="col" class="num">G</th>
+                            <th scope="col" class="num">E</th>
+                            <th scope="col" class="num">P</th>
+                            <th scope="col" class="num">GF</th>
+                            <th scope="col" class="num">GC</th>
+                            <th scope="col" class="num">DG</th>
+                            <th scope="col" class="num">PTS</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in bundle.standings %}
+                        <tr class="{% if row.position <= div.playoffs_slots %}zone-promo{% elif div.relegation_slots and row.position > (bundle.standings|length - div.relegation_slots) %}zone-releg{% endif %}">
+                            <td class="num">
+                                <span class="pos {% if div.relegation_slots and row.position > (bundle.standings|length - div.relegation_slots) %}rel{% endif %}">{{ row.position }}</span>
+                            </td>
+                            <td>
+                                <span class="team-cell">
+                                    <span class="team-crest">
+                                        {% if row.team.crest %}<img src="{{ url_for('static', filename=row.team.crest) }}" alt="">
+                                        {% else %}{{ row.team.initials[:2] }}{% endif %}
+                                    </span>
+                                    <strong>{{ row.team.name }}</strong>
+                                </span>
+                            </td>
+                            <td class="num">{{ row.played }}</td>
+                            <td class="num">{{ row.won }}</td>
+                            <td class="num">{{ row.drawn }}</td>
+                            <td class="num">{{ row.lost }}</td>
+                            <td class="num">{{ row.goals_for }}</td>
+                            <td class="num">{{ row.goals_against }}</td>
+                            <td class="num">{{ row.goal_difference }}</td>
+                            <td class="num pts">{{ row.points }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="10" class="text-muted" style="padding:40px;text-align:center">La tabla aun no tiene datos cargados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <p class="table-legend">
+                {% if div.promotion_slots %}<span><i style="background:var(--lime)"></i>Zona de ascenso</span>{% endif %}
+                {% if div.playoffs_slots %}<span><i style="background:var(--lime)"></i>Clasifican a playoffs</span>{% endif %}
+                {% if div.relegation_slots %}<span><i style="background:var(--red)"></i>Descenso directo</span>{% endif %}
+                <span class="mono" style="opacity:.6">Victoria 3 &middot; Empate 1 &middot; Derrota 0</span>
+            </p>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  JUGADORES                                                         #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel" data-tab-panel="liga:mod-jugadores">
+        {% for bundle in divisions_data %}
+        <div class="division-block" id="jugadores-{{ bundle.division.key }}">
+            <div class="division-block-head reveal">
+                <span class="div-tag">{{ bundle.division.short }}</span>
+                <h3>{{ bundle.division.name|upper }}</h3>
+                <small class="mono text-muted">MEJORES JUGADORES</small>
+            </div>
+
+            <div class="stat-columns">
+                {% for label, rows, key in [('GOLEADORES', bundle.scorers, 'goals'), ('ASISTIDORES', bundle.assistants, 'assists'), ('CLEAN SHEETS', bundle.keepers, 'clean_sheets')] %}
+                <div class="stat-column reveal">
+                    <div class="stat-column-head">
+                        <span>{{ label }}</span>
+                        <small class="mono text-muted" style="font-size:.6rem">{{ bundle.division.short }}</small>
+                    </div>
+                    {% for player in rows %}
+                    <div class="rank-row">
+                        <span class="rank">{{ loop.index }}</span>
+                        <span class="who">
+                            <strong>
+                                {{ player.username }}
+                                {% if player.is_captain %}<span class="chip chip--cyan" style="padding:1px 6px;font-size:.48rem">CAP</span>{% endif %}
+                            </strong>
+                            <small>{{ player.team.name if player.team else 'Sin equipo' }} &middot; {{ player.position }}</small>
+                        </span>
+                        <span class="val">{{ player[key] }}</span>
+                    </div>
+                    {% else %}
+                    <div class="rank-row"><span class="text-muted" style="grid-column:1/-1;font-size:.78rem">Sin datos aun.</span></div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  EQUIPOS                                                           #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel" data-tab-panel="liga:mod-equipos">
+        {% for bundle in divisions_data %}
+        <div class="division-block" id="equipos-{{ bundle.division.key }}">
+            <div class="division-block-head reveal">
+                <span class="div-tag">{{ bundle.division.short }}</span>
+                <h3>{{ bundle.division.name|upper }}</h3>
+                <small class="mono text-muted">{{ bundle.teams|length }} EQUIPOS</small>
+            </div>
+
+            <div class="team-grid reveal">
+                {% for team in bundle.teams %}
+                <article class="team-card">
+                    <div class="crest-lg">
+                        {% if team.crest %}<img src="{{ url_for('static', filename=team.crest) }}" alt="Escudo de {{ team.name }}">
+                        {% else %}{{ team.initials }}{% endif %}
+                    </div>
+                    <span class="div-tag">{{ team.division.short if team.division else bundle.division.short }} &middot; {{ team.player_count }} JUGADORES</span>
+                    <h4>{{ team.name }}</h4>
+                    <div class="meta">
+                        {% if team.coach %}<span>DT {{ team.coach }}</span>{% endif %}
+                        {% if team.country %}<span>{{ team.country }}</span>{% endif %}
+                    </div>
+                </article>
+                {% else %}
+                <div class="empty-state" style="grid-column:1/-1">
+                    <strong>Sin equipos</strong><p>El administrador todavia no registro equipos en {{ bundle.division.name }}.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ------------------------------------------------------------------ #
+    {#  REGLAS                                                            #
+    {# ------------------------------------------------------------------ #}
+    <div class="tabpanel" data-tab-panel="liga:mod-reglas" data-tabs-scope="reglas">
+        <div class="tabs reveal" role="tablist" aria-label="Tipo de reglamento" data-tabs="reglas">
+            <button class="tab active" type="button" role="tab" data-tab-target="reglas:discord" aria-selected="true">
+                <span>DISCORD</span><small>Normas del servidor</small>
+            </button>
+            <button class="tab" type="button" role="tab" data-tab-target="reglas:comunidad" aria-selected="false">
+                <span>COMUNIDAD</span><small>Conducta general</small>
+            </button>
+            <button class="tab" type="button" role="tab" data-tab-target="reglas:sanciones" aria-selected="false">
+                <span>SANCIONES</span><small>Escala disciplinaria</small>
+            </button>
+        </div>
+
+        {% for scope, title in [('discord', 'Reglas de Discord'), ('comunidad', 'Reglas de comunidad')] %}
+        <div class="tabpanel {% if loop.first %}active{% endif %}" data-tab-panel="reglas:{{ scope }}">
+            <div class="rule-table reveal">
+                {% for rule in rules if rule.scope == scope %}
+                <article class="rule-mini">
+                    <span>{{ '%02d'|format(rule.position) }}</span>
+                    <div>
+                        <strong>{{ rule.title }}</strong>
+                        <p>{{ rule.body }}</p>
+                    </div>
+                </article>
+                {% else %}
+                <p class="empty-state"><strong>Sin reglas cargadas</strong><p>El administrador todavia no publico este reglamento.</p></p>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        <div class="tabpanel" data-tab-panel="reglas:sanciones">
+            <div class="stat-columns">
+                {% for level in sanctions %}
+                <div class="stat-column reveal">
+                    <div class="stat-column-head" style="{% if level.color == 'yellow' %}color:var(--yellow){% elif level.color == 'red' %}color:var(--red){% endif %}">
+                        <span>{{ level.name }}</span>
+                    </div>
+                    <div class="sanction-body">
+                        <ul class="info-list">
+                            {% for entry in (level.items or '').split('\n') if entry.strip() %}
+                            <li>{{ entry.strip() }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% if level.note %}<p class="text-muted" style="font-size:.76rem;margin-top:16px">{{ level.note }}</p>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>

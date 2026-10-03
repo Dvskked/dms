@@ -1,0 +1,59 @@
+{# ============================================================================
+   ANUNCIOS — NOVEDADES
+   ========================================================================= #}
+<section class="section section-anchor" id="anuncios" data-section="anuncios">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">05</div>
+        <div>
+            <span class="section-tag">ANUNCIOS · NOVEDADES</span>
+            <h2>Anuncios de la liga</h2>
+        </div>
+        <p>
+            Novedades oficiales: parches, motor derules, cambios de formato,
+            fechas importantes y recordatorios para los managers.
+        </p>
+    </div>
+
+    {% if announcements %}
+    <div class="notice-list">
+        {% for item in announcements %}
+        <article class="notice-card reveal">
+            <div class="notice-marker" aria-hidden="true">
+                <span>{{ '%02d'|format(loop.index) }}</span>
+                <i></i>
+            </div>
+            <div class="notice-body">
+                <p class="article-meta">
+                    <span class="mono">{{ item.published_at.strftime('%d/%m/%Y') if item.published_at else '—' }}</span>
+                    <span class="dot" aria-hidden="true"></span>
+                    <span>{{ item.author_label }}</span>
+                </p>
+                <h3><a href="{{ url_for('site.article_detail', slug=item.slug) }}">{{ item.title }}</a></h3>
+                <p>{{ (item.summary or item.body)|excerpt(200) }}</p>
+                <div class="notice-foot">
+                    {% if item.is_pinned %}<span class="chip chip--cyan">ANUNCIO DESTACADO</span>{% endif %}
+                    <a class="article-more" href="{{ url_for('site.article_detail', slug=item.slug) }}">VER COMPLETO <span aria-hidden="true">→</span></a>
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state reveal"><strong>Sin anuncios</strong><p>No hay novedades publicadas por el momento.</p></p>
+    {% endif %}
+
+    {% if reports %}
+    <div class="reports-block">
+        <h3 class="block-title reveal">INFORMES DE PARTIDO</h3>
+        <div class="report-grid">
+            {% for item in reports %}
+            <a class="report-card reveal" href="{{ url_for('site.article_detail', slug=item.slug) }}">
+                <span class="mono text-muted" style="font-size:.58rem;letter-spacing:.2em">INFORME</span>
+                <strong>{{ item.title }}</strong>
+                <small>{{ item.published_at.strftime('%d/%m/%Y') if item.published_at else '' }}</small>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</section>

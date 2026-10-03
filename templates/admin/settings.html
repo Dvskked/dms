@@ -1,0 +1,65 @@
+﻿{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Ajustes del sitio — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('ajustes') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag">SISTEMA</span>
+                <h1>Ajustes del sitio</h1>
+                <p class="text-muted">Textos, titulos y opciones que se muestran en la pagina publica.</p>
+            </div>
+        </header>
+
+        <form method="post" class="settings-form" data-settings-form>
+            {{ csrf_token }}
+            <input type="hidden" name="values" value="{}" data-settings-json>
+
+            {% for group, (label, fields) in groups.items() %}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>{{ label }}</h2>
+                </div>
+                <div class="form-grid">
+                    {% for key, field_label, kind in fields %}
+                    {% set current = values.get(group, []) %}
+                    {% set row = current|selectattr('key', 'equalto', key)|list|first %}
+                    <div class="field {% if kind == 'bool' %}field--check{% endif %}">
+                        <label for="set-{{ key }}">
+                            {{ field_label }}
+                            <code class="mono">{{ key }}</code>
+                        </label>
+                        {% if kind == 'bool' %}
+                        <input type="checkbox" id="set-{{ key }}" data-setting="{{ key }}"
+                               {% if row and row.value in ('1', 'true', 'True') %}checked{% endif %}>
+                        {% elif kind == 'textarea' %}
+                        <textarea class="input" id="set-{{ key }}" data-setting="{{ key }}" rows="3">{{ row.value if row else '' }}</textarea>
+                        {% elif kind == 'select' %}
+                        <select class="input" id="set-{{ key }}" data-setting="{{ key }}">
+                            {% for option in ['general', 'inscripcion', 'premios', 'sanciones', 'eventos', 'sorteos', 'entrevista'] %}
+                            <option value="{{ option }}" {% if row and row.value == option %}selected{% endif %}>{{ option|upper }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input class="input" type="text" id="set-{{ key }}" data-setting="{{ key }}"
+                               value="{{ row.value if row else '' }}">
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endfor %}
+
+            <div class="form-actions reveal">
+                <button class="btn btn--primary" type="submit">GUARDAR AJUSTES</button>
+            </div>
+        </form>
+    </div>
+</main>
+{% endblock %}

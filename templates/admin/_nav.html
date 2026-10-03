@@ -1,0 +1,61 @@
+{% macro admin_nav(active) %}
+<nav class="admin-nav" aria-label="Navegación del panel">
+    <div class="admin-nav-head">
+        <span class="mono">PANEL DE CONTROL</span>
+        <strong>{{ app_name }}</strong>
+    </div>
+
+    <a class="admin-nav-item {% if not active %}active{% endif %}" href="{{ url_for('admin.dashboard') }}">
+        <span aria-hidden="true">▦</span> RESUMEN
+    </a>
+
+    <p class="admin-nav-group">CONTENIDO</p>
+    {% for key in ['avisos', 'noticias', 'informes'] %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
+    </a>
+    {% endfor %}
+
+    <p class="admin-nav-group">COMPETICION</p>
+    {% for key in ['divisiones', 'equipos', 'jugadores', 'calendario'] %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
+    </a>
+    {% endfor %}
+
+    <p class="admin-nav-group">COMUNIDAD</p>
+    {% for key in ['salas', 'museo', 'alianzas', 'redes', 'equipo', 'live'] %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
+    </a>
+    {% endfor %}
+
+    <p class="admin-nav-group">ECONOMIA</p>
+    {% for key in ['donacion-canales', 'donaciones'] %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
+    </a>
+    {% endfor %}
+
+    <p class="admin-nav-group">NORMAS</p>
+    {% for key in ['reglas', 'sanciones'] %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
+    </a>
+    {% endfor %}
+
+    {% if current_user.is_admin %}
+    <p class="admin-nav-group">SISTEMA</p>
+    <a class="admin-nav-item {% if active == 'usuarios' %}active{% endif %}" href="{{ url_for('admin.list_resource', resource='usuarios') }}">
+        <span aria-hidden="true">✎</span> {{ resources['usuarios'].title|upper }}
+    </a>
+    <a class="admin-nav-item {% if active == 'ajustes' %}active{% endif %}" href="{{ url_for('admin.settings') }}">
+        <span aria-hidden="true">⚙</span> AJUSTES DEL SITIO
+    </a>
+    {% endif %}
+
+    <div class="admin-nav-foot">
+        <a class="btn btn--sm btn--ghost btn--block" href="{{ url_for('site.index') }}">← VER LA PAGINA</a>
+    </div>
+</nav>
+{% endmacro %}

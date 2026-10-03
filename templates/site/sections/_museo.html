@@ -1,0 +1,53 @@
+{# ============================================================================
+   MUSEO — premios, campeones y rankings
+   ========================================================================= #}
+<section class="section section-anchor" id="museo" data-section="museo" data-filter-scope="museo">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">03</div>
+        <div>
+            <span class="section-tag">MUSEO</span>
+            <h2>El museo de la liga</h2>
+        </div>
+        <p>
+            Trofeos, medallas y diplomas que la liga reparte cada temporada.
+            La historia escrita en los estantes del diamante.
+        </p>
+    </div>
+
+    {% if museum %}
+    <div class="filter-bar reveal" role="tablist" aria-label="Filtrar el museo" data-filter-group="museo">
+        <button class="chip active" type="button" data-filter="all" aria-selected="true">TODO</button>
+        {% for value in museum_categories %}
+        <button class="chip" type="button" data-filter="{{ value }}" aria-selected="false">{{ museum_labels.get(value, value|upper) }}</button>
+        {% endfor %}
+        <span class="filter-count mono"><span data-filter-shown>{{ museum|length }}</span>/{{ museum|length }}</span>
+    </div>
+
+    <div class="museo-grid">
+        {% for item in museum %}
+        <figure class="museo-card reveal" data-filter-item="{{ item.category }}" data-lightbox
+                data-full="{{ item.image }}" data-caption="{{ item.title }}{% if item.awarded_on %} · {{ item.awarded_on.strftime('%d/%m/%Y') }}{% endif %}">
+            <div class="museo-frame">
+                {% if item.image %}
+                <img src="{{ url_for('static', filename=item.image) }}" alt="{{ item.title }}" loading="lazy">
+                {% else %}
+                <div class="museo-placeholder" aria-hidden="true">{{ item.initials or 'D' }}</div>
+                {% endif %}
+                <span class="museo-zoom" aria-hidden="true">+</span>
+            </div>
+            <figcaption>
+                <span class="mono text-muted" style="font-size:.58rem;letter-spacing:.2em">{{ museum_labels.get(item.category, item.category|upper) }}</span>
+                <h4>{{ item.title }}</h4>
+                {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+                <p class="museo-foot">
+                    {% if item.awarded_on %}<span>{{ item.awarded_on.strftime('%d/%m/%Y') }}</span>{% endif %}
+                    {% if item.holder %}<span>{{ item.holder }}</span>{% endif %}
+                </p>
+            </figcaption>
+        </figure>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state reveal"><strong>Museo vacio</strong><p>Los premios se iran agregando a medida que avance la temporada.</p></p>
+    {% endif %}
+</section>

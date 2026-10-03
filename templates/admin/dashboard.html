@@ -1,0 +1,148 @@
+﻿{% extends "base.html" %}
+{% from "admin/_macros.html" import cell with context %}
+
+{% block title %}Panel de administracion — {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {% from "admin/_nav.html" import admin_nav with context %}
+    {{ admin_nav(None) }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag">ADMINISTRACION</span>
+                <h1>Resumen de la liga</h1>
+                <p class="text-muted">
+                    {{ season.label if season else 'Sin temporada activa' }}
+                    {% if division %} &middot; {{ division.name }}{% endif %}
+                    &middot; {{ today.strftime('%d/%m/%Y') }}
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                <form method="post" action="{{ url_for('admin.recalculate_standings') }}"
+                      data-confirm="Recalcular la tabla desde todos los partidos?">
+                    {{ csrf_token }}
+                    <button class="btn btn--sm" type="submit">RECALCULAR TABLA</button>
+                </form>
+                <a class="btn btn--sm btn--primary" href="{{ url_for('site.index') }}">VER PAGINA</a>
+            </div>
+        </header>
+
+        {# --- Metricas --- #}
+        <div class="metric-grid">
+            {% for label, value, hint in [
+                ('USUARIOS', stats.usuarios, stats.usuarios_7d ~ ' nuevos esta semana'),
+                ('CONTENIDO', stats.articulos, stats.avisos ~ ' avisos · ' ~ stats.noticias ~ ' noticias'),
+                ('PARTIDOS', stats.partidos, stats.proximos ~ ' por jugarse'),
+                ('EQUIPOS', stats.equipos, stats.jugadores ~ ' jugadores'),
+                ('SALAS', stats.salas, 'pubs abiertas'),
+                ('MUSEO', stats.museo, stats.alianzas ~ ' alianzas'),
+                ('STAFF', stats.staff, stats.redes ~ ' redes'),
+                ('DONADO', stats.donado, stats.donaciones ~ ' donaciones'),
+            ] %}
+            <article class="metric-card reveal">
+                <span class="mono">{{ label }}</span>
+                <strong>{{ value }}</strong>
+                <small class="text-muted">{{ hint }}</small>
+            </article>
+            {% endfor %}
+        </div>
+
+        <div class="admin-columns">
+            {# --- Accesos rapidos por recurso --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Gestion rapida</h2>
+                    <p>Todos los modulos de la pagina, en un solo lugar.</p>
+                </div>
+                <div class="quick-grid">
+                    {% for key, cfg in resources.items() %}
+                    {% if not cfg.get('admin_only') or current_user.is_admin %}
+                    <a class="quick-card" href="{{ url_for('admin.list_resource', resource=key) }}">
+                        <span class="mono">{{ cfg.icon }}</span>
+                        <strong>{{ cfg.title }}</strong>
+                        <small>{{ cfg.subtitle }}</small>
+                    </a>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+            </section>
+
+            {# --- Proximos partidos --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Proximos partidos</h2>
+                </div>
+                <ul class="info-list">
+                    {% for match in upcoming %}
+                    <li>
+                        <span class="mono">{{ match.played_on.strftime('%d/%m') }} {{ match.kickoff or '' }}</span>
+                        <span>{{ match.home_team.name if match.home_team else '—' }} vs {{ match.away_team.name if match.away_team else '—' }}</span>
+                        <em class="mono">J{{ match.journey }}</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted" style="font-size:.8rem">No hay partidos programados.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# --- Top equipos --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Clasificacion</h2>
+                </div>
+                <ul class="info-list">
+                    {% for row in top_teams %}
+                    <li>
+                        <span class="mono">{{ loop.index }}</span>
+                        <span>{{ row.team.name }}</span>
+                        <em class="mono">{{ row.points }} PTS</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted" style="font-size:.8rem">Aun no hay tabla calculada.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# --- Contenido reciente --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Ultimo contenido</h2>
+                </div>
+                <ul class="info-list">
+                    {% for item in recent_articles %}
+                    <li>
+                        <span class="chip chip--cyan">{{ item.kind|upper }}</span>
+                        <span>{{ item.title|truncate(42) }}</span>
+                        <em>{{ 'PUBLICADO' if item.is_published else 'BORRADOR' }}</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted" style="font-size:.8rem">Sin articulos todavia.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# --- Usuarios --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Usuarios</h2>
+                    <p class="mono">{{ logged_in_today }} ingresos hoy</p>
+                </div>
+                <ul class="info-list">
+                    {% for user in recent_users %}
+                    <li>
+                        <span class="avatar avatar--sm" aria-hidden="true">{{ user.initials }}</span>
+                        <span>{{ user.label }}</span>
+                        <em class="mono">{{ user.role|upper }}</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted" style="font-size:.8rem">Sin usuarios registrados.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+        </div>
+    </div>
+</main>
+{% endblock %}

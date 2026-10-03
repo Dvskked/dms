@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}{{ stream.title }} — LIVE · {{ app_name }}{% endblock %}
+{% block description %}{{ stream.description or 'Transmision en vivo de The Diamonds League.' }}{% endblock %}
+
+{% block body_class %}page-live-room{% endblock %}
+
+{% block content %}
+<main id="main" class="section live-room">
+    <nav class="crumbs reveal" aria-label="Migas de pan">
+        <a href="{{ url_for('site.index') }}">{{ app_name }}</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ url_for('site.index') }}#live">LIVE FUTBOL</a>
+        <span aria-hidden="true">/</span>
+        <span>{{ stream.title|truncate(40) }}</span>
+    </nav>
+
+    <div class="live-room-layout">
+        <section class="live-player reveal">
+            <div class="player-frame">
+                {% if stream.is_live and stream.player_embed %}
+                    <iframe src="{{ stream.player_embed }}" title="{{ stream.title }}" loading="lazy"
+                            allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+                {% elif stream.is_live %}
+                    <a class="player-poster" href="{{ stream.url }}" target="_blank" rel="noopener noreferrer">
+                        <img src="{{ url_for('static', filename=stream.thumbnail or 'img/logo-mark.png') }}" alt="{{ stream.title }}">
+                        <span class="live-play" aria-hidden="true">&#9654;</span>
+                        <span class="player-poster-label mono">ABRIR EN {{ stream.platform|upper }}</span>
+                    </a>
+                {% else %}
+                    <div class="player-off">
+                        <strong>TRANSMISION NO INICIADA</strong>
+                        <p>{{ stream.scheduled_at.strftime('%d/%m/%Y %H:%M') if stream.scheduled_at else 'Proximamente' }}</p>
+                    </div>
+                {% endif %}
+                <span class="player-chrome mono">{{ stream.platform|upper }}</span>
+            </div>
+
+            <div class="player-bar">
+                <div class="player-info">
+                    <span class="chip {% if stream.is_live %}chip--pink{% endif %}">{{ 'EN VIVO' if stream.is_live else 'OFFLINE' }}</span>
+                    <h1>{{ stream.title }}</h1>
+                    <p class="text-muted">{{ stream.description or '' }}</p>
+                </div>
+                <div class="player-actions">
+                    {% if stream.chat_url %}<a class="btn btn--sm" href="{{ stream.chat_url }}" target="_blank" rel="noopener noreferrer">CHAT</a>{% endif %}
+                    {% if stream.url %}
+                    <a class="btn btn--sm btn--primary" href="{{ stream.url }}" target="_blank" rel="noopener noreferrer">ABRIR EN {{ stream.platform|upper }}</a>
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if stream.chat_url %}
+            <iframe class="player-chat" src="{{ stream.chat_url }}" title="Chat de {{ stream.title }}" loading="lazy"
+                    allowtransparency="true" allowfullscreen="true"></iframe>
+            {% endif %}
+        </section>
+
+        <aside class="live-side">
+            <h2 class="block-title">OTROS CANALES</h2>
+            <div class="live-side-list">
+                {% for other in others %}
+                <a class="live-side-item {% if other.is_live %}is-live{% endif %}"
+                   href="{{ url_for('site.live_room', stream_id=other.id) }}">
+                    <span class="thumb">
+                        {% if other.thumbnail %}<img src="{{ url_for('static', filename=other.thumbnail) }}" alt="" loading="lazy">{% endif %}
+                    </span>
+                    <span>
+                        <strong>{{ other.title }}</strong>
+                        <small class="mono">
+                            {{ other.platform|upper }}
+                            {% if other.is_live %}&middot; EN VIVO{% elif other.scheduled_at %}&middot; {{ other.scheduled_at.strftime('%d/%m %H:%M') }}{% endif %}
+                        </small>
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+
+            <div class="live-side-card">
+                <h3 class="block-title">PRÓXIMOS PARTIDOS</h3>
+                <ul class="info-list">
+                    {% for match in upcoming %}
+                    <li>
+                        <span class="mono">{{ match.played_on.strftime('%d/%m') }}</span>
+                        <span>{{ match.home_team.name if match.home_team else 'Por definir' }} vs {{ match.away_team.name if match.away_team else 'Por definir' }}</span>
+                        <em class="mono">{{ match.kickoff or '--:--' }}</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted" style="font-size:.8rem">No hay partidos programados por ahora.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </aside>
+    </div>
+</main>
+{% endblock %}

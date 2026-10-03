@@ -1,0 +1,80 @@
+{# ============================================================================
+   Macros del panel de administracion.
+   Se invocan desde list.html:  {{ cell(rows, field, resource) }}
+   ========================================================================= #}
+
+{# --- Detecta el campo booleano de activacion del modelo --- #}
+{% macro toggle_field(row) %}
+{%- for name in ['is_active', 'is_open', 'is_published', 'is_active_account'] -%}
+{%- if row[name] is defined -%}{{ name }}{%- endif -%}
+{%- endfor -%}
+{%- endmacro %}
+
+
+{# --- Acciones de una fila --- #}
+{% macro row_actions(row, resource) %}
+{%- set flag = toggle_field(row)|trim -%}
+<div class="row-actions">
+    <a class="btn btn--sm" href="{{ url_for('admin.edit', resource=resource, pk=row.id) }}">EDITAR</a>
+
+    {% if flag %}
+    <form method="post" action="{{ url_for('admin.toggle', resource=resource, pk=row.id) }}">
+        {{ csrf_token }}
+        <button class="btn btn--sm" type="submit">{{ 'OCULTAR' if row[flag] else 'ACTIVAR' }}</button>
+    </form>
+    {% endif %}
+
+    {% if resource in ('noticias', 'avisos', 'informes') %}
+    <form method="post" action="{{ url_for('admin.duplicate_article', pk=row.id) }}">
+        {{ csrf_token }}
+        <button class="btn btn--sm" type="submit">DUPLICAR</button>
+    </form>
+    {% endif %}
+
+    {% if resource == 'usuarios' and current_user.is_admin %}
+    <form method="post" action="{{ url_for('admin.promote', pk=row.id) }}"
+          data-confirm="{{ 'Quitar el acceso de administrador a ' ~ row.username ~ '?' if row.is_admin else 'Dar acceso de administrador a ' ~ row.username ~ '?' }}">
+        {{ csrf_token }}
+        <button class="btn btn--sm" type="submit">{{ 'BAJAR A STAFF' if row.is_admin else 'HACER ADMIN' }}</button>
+    </form>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('admin.delete', resource=resource, pk=row.id) }}"
+          data-confirm="Eliminar este registro? No se puede deshacer.">
+        {{ csrf_token }}
+        <button class="btn btn--sm btn--danger" type="submit">ELIMINAR</button>
+    </form>
+</div>
+{%- endmacro %}
+
+
+{# --- Celda generica de la tabla --- #}
+{% macro cell(row, field, resource) %}
+{%- if field == 'actions' -%}
+    {{ row_actions(row, resource) }}
+{%- else -%}
+{%- set value = row|attr(field) -%}
+{%- if value is undefined or value is none -%}
+    <span class="text-muted">—</span>
+{%- elif value is sameas true -%}
+    <span class="chip chip--lime">SI</span>
+{%- elif value is sameas false -%}
+    <span class="chip">NO</span>
+{%- elif value is string -%}
+    <span class="cell-text">{{ value|truncate(56) }}</span>
+{%- elif value.year is defined -%}
+    <span class="mono">{{ value.strftime('%d/%m/%Y') }}</span>
+{%- elif value.id is defined -%}
+    <span class="cell-text">
+        {%- if value.title is defined -%}{{ value.title }}
+        {%- elif value.name is defined -%}{{ value.name }}
+        {%- elif value.label is defined -%}{{ value.label }}
+        {%- elif value.username is defined -%}{{ value.username }}
+        {%- else -%}#{{ value.id }}
+        {%- endif -%}
+    </span>
+{%- else -%}
+    <span class="mono">{{ value }}</span>
+{%- endif -%}
+{%- endif -%}
+{%- endmacro %}

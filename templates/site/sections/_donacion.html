@@ -1,0 +1,72 @@
+{# ============================================================================
+   DONACION
+   ========================================================================= #}
+<section class="section section-anchor" id="donacion" data-section="donacion">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">10</div>
+        <div>
+            <span class="section-tag">DONACION</span>
+            <h2>Apoya a la liga</h2>
+        </div>
+        <p>
+            Tus aportes pagan servidores, premios del museo, referecia y herramientas
+            para que la competicion siga creciendo.
+        </p>
+    </div>
+
+    <div class="donate-layout">
+        <div class="donate-main">
+            {% if donation_goal %}
+            <div class="donate-goal">
+                <div class="donate-goal-head">
+                    <span class="mono">{{ donation_goal.label|upper }}</span>
+                    <strong>{{ donation_goal.percent }}%</strong>
+                </div>
+                <div class="bar-track" role="progressbar" aria-valuenow="{{ donation_goal.percent }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ donation_goal.label }}">
+                    <span style="width:{{ donation_goal.percent }}%"></span>
+                </div>
+                <p class="donate-goal-foot">
+                    <span class="mono">RECARGADO {{ donation_goal.current_amount }}</span>
+                    <span class="mono">META {{ donation_goal.target_amount }}</span>
+                </p>
+                {% if donation_goal.description %}<p class="text-muted" style="font-size:.8rem">{{ donation_goal.description }}</p>{% endif %}
+            </div>
+            {% endif %}
+
+            <div class="donate-channels">
+                {% for channel in donation_channels %}
+                <article class="donate-card reveal">
+                    <span class="donate-icon mono">{{ channel.icon or channel.method[:2]|upper }}</span>
+                    <h4>{{ channel.label }}</h4>
+                    {% if channel.account %}<p class="mono donate-account">{{ channel.account }}</p>{% endif %}
+                    <p class="text-muted" style="font-size:.78rem">{{ channel.note or '' }}</p>
+                    {% if channel.url %}
+                    <a class="btn btn--sm btn--primary" href="{{ channel.url }}" target="_blank" rel="noopener noreferrer">DONAR</a>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+
+        <aside class="donate-side">
+            <h3 class="block-title">ULTIMAS DONACIONES</h3>
+            <ul class="donor-list">
+                {% for donation in donations %}
+                <li>
+                    <span class="avatar avatar--sm" aria-hidden="true">{{ donation.initials }}</span>
+                    <span>
+                        <strong>{{ donation.display_name }}</strong>
+                        <small class="mono">{{ donation.amount }} {{ donation.currency }}</small>
+                    </span>
+                    <em class="mono">{{ donation.donated_at.strftime('%d/%m') }}</em>
+                </li>
+                {% else %}
+                <li class="text-muted" style="font-size:.8rem">Todavia no hay donaciones registradas.</li>
+                {% endfor %}
+            </ul>
+            {% if site_settings.donation_note %}
+            <p class="note-strip" style="margin-top:22px"><span>NOTA</span>{{ site_settings.donation_note }}</p>
+            {% endif %}
+        </aside>
+    </div>
+</section>

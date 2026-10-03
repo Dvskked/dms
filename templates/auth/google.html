@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block title %}Vincular Google — {{ app_name }}{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+
+{% block content %}
+<main id="main" class="auth-shell">
+    <section class="auth-card reveal">
+        <span class="auth-tag mono">CUENTA VINCULADA</span>
+        <h1>Conectar con Google</h1>
+
+        {% if current_user.google_email %}
+        <p class="auth-lead">
+            Tu cuenta ya esta vinculada a <strong>{{ current_user.google_email }}</strong>.
+            Puedes cambiarla cuando quieras.
+        </p>
+        {% else %}
+        <p class="auth-lead">
+            Escribe el correo de tu cuenta de Google para vincularla a tu perfil de la liga.
+        </p>
+        {% endif %}
+
+        <form method="post" class="auth-form" novalidate>
+            {{ form.hidden_tag() }}
+            <div class="field">
+                {{ form.google_email.label }}
+                {{ form.google_email(class="input", placeholder="tu.cuenta@gmail.com") }}
+                {% for error in form.google_email.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            <button class="btn btn--primary btn--block" type="submit">VINCULAR CUENTA</button>
+        </form>
+
+        <p class="auth-switch">
+            <a href="{{ url_for('auth.profile') }}">← Volver a mi perfil</a>
+        </p>
+    </section>
+</main>
+{% endblock %}

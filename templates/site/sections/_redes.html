@@ -1,0 +1,36 @@
+{# ============================================================================
+   REDES SOCIALES
+   ========================================================================= #}
+<section class="section section-anchor" id="redes" data-section="redes">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">07</div>
+        <div>
+            <span class="section-tag">REDES SOCIALES</span>
+            <h2>Siguenos en todas las redes</h2>
+        </div>
+        <p>
+            Partidos, highlights y anuncios en directo. Elige tu canal favorito
+            y no te pierdas ninguna fecha.
+        </p>
+    </div>
+
+    <div class="social-grid">
+        {% for link in socials %}
+        <a class="social-card social-card--{{ link.platform|lower if link.platform else 'web' }} reveal"
+           href="{{ link.url }}" target="_blank" rel="noopener noreferrer" title="{{ link.label }}">
+            <span class="social-icon" aria-hidden="true">{{ link.icon or link.platform|upper|truncate(2) }}</span>
+            <span class="social-body">
+                <strong>{{ link.label }}</strong>
+                <small class="mono">{{ link.handle or link.url }}</small>
+            </span>
+            <span class="social-go" aria-hidden="true">→</span>
+        </a>
+        {% else %}
+        <p class="empty-state" style="grid-column:1/-1"><strong>Sin redes cargadas</strong><p>El administrador todavia no publico sus redes.</p></p>
+        {% endfor %}
+    </div>
+
+    {% if site_settings.socials_note %}
+    <p class="note-strip reveal"><span>INFO</span>{{ site_settings.socials_note }}</p>
+    {% endif %}
+</section>

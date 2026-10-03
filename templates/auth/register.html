@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "partials/_pw_field.html" import pw_field %}
+
+{% block title %}Registrarse — {{ app_name }}{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+
+{% block content %}
+<main id="main" class="auth-shell">
+    <section class="auth-card reveal">
+        <span class="auth-tag mono">NUEVA CUENTA</span>
+        <h1>Registrate en la liga</h1>
+        <p class="auth-lead">
+            Solo necesitas usuario, correo y contrasena. El primer usuario registrado
+            es el administrador de la pagina.
+        </p>
+
+        <form method="post" class="auth-form" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="field">
+                {{ form.username.label }}
+                {{ form.username(class="input", autocomplete="username", placeholder=form.username.label.text) }}
+                {% for error in form.username.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            <div class="field">
+                {{ form.email.label }}
+                {{ form.email(class="input", autocomplete="email", placeholder=form.email.label.text) }}
+                {% for error in form.email.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            {{ pw_field(form.password, 'Minimo 6 caracteres.') }}
+            {{ pw_field(form.confirm_password) }}
+
+            <button class="btn btn--primary btn--block" type="submit">CREAR CUENTA</button>
+        </form>
+
+        <p class="auth-switch">
+            ¿Ya tienes cuenta? <a href="{{ url_for('auth.login') }}">Ingresa aqui</a>
+        </p>
+    </section>
+</main>
+{% endblock %}

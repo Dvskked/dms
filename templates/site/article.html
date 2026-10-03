@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}{{ item.title }} — {{ app_name }}{% endblock %}
+{% block description %}{{ (item.summary or item.body)|excerpt(160) }}{% endblock %}
+
+{% block body_class %}page-article{% endblock %}
+
+{% block content %}
+<main id="main" class="section article-page">
+    <nav class="crumbs reveal" aria-label="Migas de pan">
+        <a href="{{ url_for('site.index') }}">{{ app_name }}</a>
+        <span aria-hidden="true">/</span>
+        <a href="{{ url_for('site.index') }}#{{ 'noticias' if item.kind == 'news' else ('anuncios' if item.kind == 'announcement' else 'liga') }}">
+            {{ item.kind|upper }}
+        </a>
+        <span aria-hidden="true">/</span>
+        <span>{{ item.title|truncate(48) }}</span>
+    </nav>
+
+    <article class="article-full reveal">
+        <header class="article-full-head">
+            <span class="chip chip--cyan">{{ item.kind_label|upper }}</span>
+            <h1>{{ item.title }}</h1>
+            <p class="article-meta">
+                <span class="mono">{{ item.published_at.strftime('%d/%m/%Y') if item.published_at else '—' }}</span>
+                <span class="dot" aria-hidden="true"></span>
+                <span>{{ item.author_label }}</span>
+                {% if item.category_label %}<span class="dot" aria-hidden="true"></span><span>{{ item.category_label }}</span>{% endif %}
+            </p>
+        </header>
+
+        {% if item.cover %}
+        <div class="article-full-cover" data-lightbox data-full="{{ item.cover }}" data-caption="{{ item.title }}">
+            <img src="{{ url_for('static', filename=item.cover) }}" alt="{{ item.title }}">
+        </div>
+        {% endif %}
+
+        <div class="article-prose">{{ body }}</div>
+
+        <footer class="article-full-foot">
+            <a class="btn btn--sm" href="{{ url_for('site.index') }}#noticias">← VOLVER</a>
+            <span class="mono text-muted" style="font-size:.62rem">{{ item.views }} VISTAS</span>
+        </footer>
+    </article>
+
+    {% if related %}
+    <section class="related">
+        <h2 class="block-title">TAMBIEN EN {{ item.kind_label|upper }}</h2>
+        <div class="report-grid">
+            {% for other in related %}
+            <a class="report-card reveal" href="{{ url_for('site.article_detail', slug=other.slug) }}">
+                <span class="mono text-muted" style="font-size:.58rem;letter-spacing:.2em">{{ other.published_at.strftime('%d/%m/%Y') if other.published_at else '' }}</span>
+                <strong>{{ other.title }}</strong>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+</main>
+{% endblock %}

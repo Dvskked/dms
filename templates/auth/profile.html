@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Mi perfil — {{ app_name }}{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+
+{% block content %}
+<main id="main" class="section">
+    <nav class="crumbs reveal" aria-label="Migas de pan">
+        <a href="{{ url_for('site.index') }}">{{ app_name }}</a>
+        <span aria-hidden="true">/</span>
+        <span>MI PERFIL</span>
+    </nav>
+
+    <div class="profile-layout">
+        <section class="panel reveal">
+            <div class="panel-head">
+                <h2>Datos del perfil</h2>
+                <p>Estos datos se muestran en el equipo de administracion y en los rankings.</p>
+            </div>
+
+            <form method="post" enctype="multipart/form-data" class="form-grid" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div class="form-row">
+                    <div class="field">
+                        {{ form.display_name.label }}
+                        {{ form.display_name(class="input", placeholder=current_user.username) }}
+                        {% for e in form.display_name.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                    </div>
+                    <div class="field">
+                        {{ form.email.label }}
+                        {{ form.email(class="input") }}
+                        {% for e in form.email.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="field">
+                        {{ form.haxball_id.label }}
+                        {{ form.haxball_id(class="input", placeholder="ID de HaxBall") }}
+                        {% for e in form.haxball_id.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                    </div>
+                    <div class="field">
+                        {{ form.country.label }}
+                        {{ form.country(class="input") }}
+                        {% for e in form.country.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                    </div>
+                </div>
+
+                <div class="field">
+                    {{ form.bio.label }}
+                    {{ form.bio(class="input", rows="4", placeholder="Cuentanos algo sobre ti…") }}
+                    {% for e in form.bio.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.avatar.label }}
+                    {{ form.avatar(class="input input--file") }}
+                    {% for e in form.avatar.errors %}<p class="field-error">{{ e }}</p>{% endfor %}
+                    {% if current_user.avatar %}
+                    <div class="upload-preview">
+                        <img src="{{ url_for('static', filename=current_user.avatar) }}" alt="Avatar actual">
+                        <label class="check">{{ form.remove_avatar }} <span>Quitar el avatar actual</span></label>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">GUARDAR CAMBIOS</button>
+                    <a class="btn btn--ghost" href="{{ url_for('site.index') }}">VOLVER</a>
+                </div>
+            </form>
+        </section>
+
+        <aside class="profile-side">
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Cuenta</h2>
+                </div>
+                <div class="account-card">
+                    <span class="avatar avatar--lg" aria-hidden="true">
+                        {% if current_user.avatar %}<img src="{{ url_for('static', filename=current_user.avatar) }}" alt="">
+                        {% else %}{{ current_user.initials }}{% endif %}
+                    </span>
+                    <div>
+                        <strong>{{ current_user.label }}</strong>
+                        <span class="mono">@{{ current_user.username }}</span>
+                        <span class="chip chip--cyan">{{ current_user.role|upper }}</span>
+                    </div>
+                </div>
+                <dl class="kv-list">
+                    <div><dt>Correo</dt><dd>{{ current_user.email or '—' }}</dd></div>
+                    <div><dt>Registro</dt><dd>{{ current_user.created_at.strftime('%d/%m/%Y') if current_user.created_at else '—' }}</dd></div>
+                    <div><dt>Google</dt><dd>{{ current_user.google_email or 'No vinculado' }}</dd></div>
+                    <div><dt>Modo admin</dt><dd>{{ 'Activado' if prefs.admin_mode else 'Desactivado' }}</dd></div>
+                    <div><dt>Modo premium</dt><dd>{{ 'Activado' if prefs.premium_mode else 'Desactivado' }}</dd></div>
+                </dl>
+                <div class="stack-actions">
+                    <a class="btn btn--sm" href="{{ url_for('auth.change_password') }}">CAMBIAR CONTRASENA</a>
+                    <a class="btn btn--sm" href="{{ url_for('auth.google') }}">VINCULAR GOOGLE</a>
+                    {% if current_user.is_admin %}<a class="btn btn--sm btn--primary" href="{{ url_for('admin.dashboard') }}">PANEL ADMIN</a>{% endif %}
+                </div>
+            </section>
+        </aside>
+    </div>
+</main>
+{% endblock %}

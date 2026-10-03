@@ -1,0 +1,56 @@
+{# ============================================================================
+   PUBS — salas publicas de HaxBall
+   ========================================================================= #}
+<section class="section section-anchor" id="pubs" data-section="pubs">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">02</div>
+        <div>
+            <span class="section-tag">PUBS</span>
+            <h2>Diamonds Pubs</h2>
+        </div>
+        <p>
+            Salas abiertas de la comunidad para practicar, entrenar y buscar scrims.
+            Entra con el codigo, comparte el enlace y juega.
+        </p>
+    </div>
+
+    {% if rooms %}
+    <div class="pub-grid">
+        {% for room in rooms %}
+        <article class="pub-card reveal {% if room.is_featured %}is-featured{% endif %} {% if room.is_locked %}is-locked{% endif %}">
+            <div class="pub-map" data-parallax>
+                <img src="{{ url_for('static', filename=room.image or 'img/logo-mark.png') }}" alt="" loading="lazy">
+                <span class="pub-badge {% if room.is_locked %}locked{% endif %}">
+                    {% if room.is_locked %}CERRADA{% elif room.is_open %}ABIERTA{% else %}MANTENIMIENTO{% endif %}
+                </span>
+                {% if room.is_pinned %}<span class="pub-pinned">FIJADA</span>{% endif %}
+            </div>
+            <div class="pub-body">
+                <span class="mono text-muted" style="font-size:.6rem;letter-spacing:.2em">{{ room.region }} &middot; {{ room.map_name }}</span>
+                <h3>{{ room.name }}</h3>
+                <p>{{ room.description or 'Sala de la comunidad The Diamonds League.' }}</p>
+                <dl class="pub-meta">
+                    <div><dt>MODO</dt><dd>{{ room.mode_label }}</dd></div>
+                    <div><dt>MAX</dt><dd>{{ room.max_players }}</dd></div>
+                    <div><dt>PING</dt><dd>{{ room.ping_label }}</dd></div>
+                </dl>
+                <div class="pub-code">
+                    <span class="mono">CODIGO <strong>{{ room.code }}</strong></span>
+                    <button class="btn btn--sm" type="button" data-copy="{{ room.code }}" data-copied="COPIADO">COPIAR</button>
+                    {% if room.room_url %}
+                    <a class="btn btn--sm btn--primary" href="{{ room.room_url }}" target="_blank" rel="noopener noreferrer">ENTRAR</a>
+                    {% endif %}
+                </div>
+                {% if room.password %}<p class="text-muted" style="font-size:.68rem">Contrasena: {{ room.password }}</p>{% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty-state reveal"><strong>Sin salas abiertas</strong><p>El administrador todavia no publico salas. Vuelve en unos minutos.</p></p>
+    {% endif %}
+
+    {% if site_settings.pubs_note %}
+    <p class="note-strip reveal"><span>INFO</span>{{ site_settings.pubs_note }}</p>
+    {% endif %}
+</section>

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "partials/_pw_field.html" import pw_field %}
+
+{% block title %}Ingresar — {{ app_name }}{% endblock %}
+{% block body_class %}page-auth{% endblock %}
+
+{% block content %}
+<main id="main" class="auth-shell">
+    <section class="auth-card reveal">
+        <span class="auth-tag mono">ACCESO MIEMBROS</span>
+        <h1>Ingresa a tu cuenta</h1>
+        <p class="auth-lead">
+            Entra para gestionar tu perfil, tus modos y el acceso al panel de la liga.
+        </p>
+
+        <form method="post" class="auth-form" novalidate>
+            {{ form.hidden_tag() }}
+
+            <div class="field">
+                {{ form.username.label }}
+                {{ form.username(class="input", autocomplete="username", placeholder=form.username.label.text) }}
+                {% for error in form.username.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+            </div>
+            {{ pw_field(form.password) }}
+
+            {% if request.args.get('next') %}
+            <input type="hidden" name="next" value="{{ request.args.get('next') }}">
+            {% endif %}
+
+            <div class="field field--check">
+                {{ form.remember() }}
+                <span>{{ form.remember.label.text }}</span>
+            </div>
+
+            <button class="btn btn--primary btn--block" type="submit">INGRESAR</button>
+        </form>
+
+        <p class="auth-switch">
+            ¿No tienes cuenta? <a href="{{ url_for('auth.register') }}">Registrate gratis</a>
+        </p>
+        <p class="auth-hint mono">
+            Usuario inicial: <strong>admin</strong> · contrasena: <strong>adminmascapito</strong>
+        </p>
+    </section>
+</main>
+{% endblock %}

@@ -1,0 +1,70 @@
+﻿{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}{{ 'Nuevo' if obj is none else 'Editar' }} · {{ cfg.title }} — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav(resource) }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">{{ cfg.icon }}</span>
+                <h1>{{ 'Nuevo registro' if obj is none else 'Editar registro' }}</h1>
+                <p class="text-muted">{{ cfg.title }} — {{ cfg.subtitle }}</p>
+            </div>
+            <div class="admin-head-actions">
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource=resource) }}">← VOLVER</a>
+            </div>
+        </header>
+
+        <section class="panel reveal">
+            <form method="post" enctype="multipart/form-data" class="form-grid" novalidate>
+                {{ form.hidden_tag() }}
+
+                {% if form._fields|length <= 2 %}
+                <p class="text-muted">
+                    Este modulo usa el formulario automatico: los campos editables se gestionan
+                    directamente en la base de datos. Anade las columnas con <code>flask db migrate</code>.
+                </p>
+                {% endif %}
+
+                {% for name, field in form._fields.items() %}
+                {% if name not in ('csrf_token', 'submit') %}
+                <div class="field {% if field.type in ('BooleanField',) %}field--check{% endif %}">
+                    {% if field.type == 'BooleanField' %}
+                    {{ field() }} <span>{{ field.label.text }}</span>
+                    {% else %}
+                    {{ field.label }}
+                    {% if field.type == 'FileField' %}
+                    {{ field(class="input input--file", **{'data-preview': '#preview-' ~ name}) }}
+                    <img class="upload-preview-img is-hidden" id="preview-{{ name }}" alt="Vista previa">
+                    {% elif field.type == 'TextAreaField' %}
+                    {{ field(class="input", rows="7") }}
+                    {% elif field.type == 'SelectMultipleField' %}
+                    {{ field(class="input", size=6) }}
+                    {% elif name == 'slug' %}
+                    {{ field(class="input", **{'data-slug-target': '1', 'data-slug-source-to': 'title'}) }}
+                    {% else %}
+                    {{ field(class="input") }}
+                    {% endif %}
+                    {% endif %}
+                    {% for error in field.errors %}
+                    <p class="field-error">{{ error }}</p>
+                    {% endfor %}
+                    {% if field.description %}<p class="field-hint">{{ field.description }}</p>{% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">GUARDAR</button>
+                    <a class="btn btn--ghost" href="{{ url_for('admin.list_resource', resource=resource) }}">CANCELAR</a>
+                </div>
+            </form>
+        </section>
+    </div>
+</main>
+{% endblock %}

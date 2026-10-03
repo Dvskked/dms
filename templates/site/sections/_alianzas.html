@@ -1,0 +1,76 @@
+{# ============================================================================
+   ALIANZAS
+   ========================================================================= #}
+<section class="section section-anchor" id="alianzas" data-section="alianzas">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">06</div>
+        <div>
+            <span class="section-tag">ALIANZAS</span>
+            <h2>Alianzas de la liga</h2>
+        </div>
+        <p>
+            Clubes, marcas y comunidades que crecen junto a la liga.
+            Si quieres aparecer aqui, escribenos por Discord.
+        </p>
+    </div>
+
+    {% if featured_alliance %}
+    <article class="alliance-hero reveal" data-tabs-scope="alianza">
+        <div class="alliance-logo">
+            {% if featured_alliance.emblem and featured_alliance.emblem|length > 2 %}
+            <img src="{{ url_for('static', filename=featured_alliance.emblem) }}" alt="Logo de {{ featured_alliance.name }}">
+            {% else %}
+            <span aria-hidden="true">{{ featured_alliance.initials }}</span>
+            {% endif %}
+        </div>
+        <div class="alliance-copy">
+            <span class="chip chip--cyan">ALIANZA OFICIAL</span>
+            <h3>{{ featured_alliance.name }}</h3>
+            {% if featured_alliance.tagline %}<p class="mono text-muted" style="font-size:.66rem">{{ featured_alliance.tagline }}</p>{% endif %}
+            <p>{{ featured_alliance.description }}</p>
+            <dl class="kv-list">
+                <div><dt>Tipo</dt><dd>{{ featured_alliance.kind_label }}</dd></div>
+                <div><dt>Estado</dt><dd>{{ featured_alliance.status_label }}</dd></div>
+                {% if featured_alliance.starts_on %}<div><dt>Desde</dt><dd>{{ featured_alliance.starts_on.strftime('%d/%m/%Y') }}</dd></div>{% endif %}
+                {% if featured_alliance.code %}<div><dt>Codigo</dt><dd class="mono">{{ featured_alliance.code }}</dd></div>{% endif %}
+            </dl>
+            <div class="alliance-actions">
+                {% if featured_alliance.url %}<a class="btn btn--sm btn--primary" href="{{ featured_alliance.url }}" target="_blank" rel="noopener noreferrer">SITIO WEB</a>{% endif %}
+                {% if featured_alliance.code %}
+                <button class="btn btn--sm" type="button" data-copy="{{ featured_alliance.code }}" data-copied="COPIADO">COPIAR CODIGO</button>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+    {% endif %}
+
+    {% if alliances|length > 1 %}
+    <div class="alliance-grid">
+        {% for item in alliances %}
+        {% if item.id != (featured_alliance.id if featured_alliance else 0) %}
+        <article class="alliance-card reveal">
+            <div class="alliance-card-logo">
+                {% if item.emblem and item.emblem|length > 2 %}
+                <img src="{{ url_for('static', filename=item.emblem) }}" alt="">
+                {% else %}
+                <span aria-hidden="true">{{ item.initials }}</span>
+                {% endif %}
+            </div>
+            <h4>{{ item.name }}</h4>
+            {% if item.tagline %}<span class="mono text-muted" style="font-size:.6rem">{{ item.tagline }}</span>{% endif %}
+            <p>{{ (item.description or '')|truncate(120) }}</p>
+            <div class="alliance-actions">
+                <span class="chip">{{ item.kind_label|upper }}</span>
+                <span class="chip {% if item.status == 'activa' %}chip--lime{% endif %}">{{ item.status_label|upper }}</span>
+                {% if item.url %}<a class="btn btn--sm" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">WEB</a>{% endif %}
+            </div>
+        </article>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if site_settings.alliances_note %}
+    <p class="note-strip reveal"><span>INFO</span>{{ site_settings.alliances_note }}</p>
+    {% endif %}
+</section>

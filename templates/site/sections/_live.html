@@ -1,0 +1,65 @@
+{# ============================================================================
+   LIVE FUTBOL — transmisiones
+   ========================================================================= #}
+<section class="section section-anchor" id="live" data-section="live">
+    <div class="section-head reveal">
+        <div class="section-num" aria-hidden="true">09</div>
+        <div>
+            <span class="section-tag text-pink">LIVE FUTBOL</span>
+            <h2>Live de la liga</h2>
+        </div>
+        <p>
+            Partidos, commentary y compilaciones en directo. Elige un canal
+            y acompana la jornada con la comunidad.
+        </p>
+    </div>
+
+    {% if featured_live %}
+    <article class="live-hero reveal" data-tabs-scope="live">
+        <a class="live-hero-media" href="{{ url_for('site.live_room', stream_id=featured_live.id) }}">
+            <img src="{{ url_for('static', filename=featured_live.thumbnail or 'img/logo-mark.png') }}" alt="" loading="lazy">
+            <span class="live-play" aria-hidden="true">▶</span>
+            <span class="live-now"><i class="live-pulse"></i>EN VIVO</span>
+            {% if featured_live.viewers %}<span class="live-viewers mono">{{ featured_live.viewers }} ESPECTADORES</span>{% endif %}
+        </a>
+        <div class="live-hero-body">
+            <span class="chip chip--pink">{{ featured_live.category|upper if featured_live.category else 'TRANSMISION' }}</span>
+            <h3>{{ featured_live.title }}</h3>
+            <p>{{ featured_live.description }}</p>
+            <div class="live-meta">
+                <span class="mono text-muted" style="font-size:.6rem;letter-spacing:.2em">{{ featured_live.platform|upper }}</span>
+                {% if featured_live.started_at %}<span class="mono text-muted" style="font-size:.6rem">DESDE {{ featured_live.started_at.strftime('%d/%m %H:%M') }}</span>{% endif %}
+            </div>
+            <div class="live-actions">
+                <a class="btn btn--sm btn--pink" href="{{ url_for('site.live_room', stream_id=featured_live.id) }}">VER AHORA</a>
+                {% if featured_live.chat_url %}<a class="btn btn--sm" href="{{ featured_live.chat_url }}" target="_blank" rel="noopener noreferrer">CHAT</a>{% endif %}
+            </div>
+        </div>
+    </article>
+    {% endif %}
+
+    {% if live_streams %}
+    <div class="live-grid">
+        {% for stream in live_streams %}
+        {% if stream.id != (featured_live.id if featured_live else 0) %}
+        <article class="live-card reveal {% if stream.is_live %}is-live{% endif %}">
+            <a class="live-thumb" href="{{ url_for('site.live_room', stream_id=stream.id) }}">
+                {% if stream.thumbnail %}<img src="{{ url_for('static', filename=stream.thumbnail) }}" alt="" loading="lazy">{% endif %}
+                {% if stream.is_live %}<span class="live-now"><i class="live-pulse"></i>EN VIVO</span>
+                {% elif stream.is_upcoming %}<span class="live-soon mono">PROXIMAMENTE</span>{% endif %}
+            </a>
+            <div class="live-card-body">
+                <h4><a href="{{ url_for('site.live_room', stream_id=stream.id) }}">{{ stream.title }}</a></h4>
+                <p class="live-card-meta">
+                    <span class="mono">{{ stream.platform|upper }}</span>
+                    {% if stream.scheduled_at %}<span class="mono text-muted">{{ stream.scheduled_at.strftime('%d/%m %H:%M') }}</span>{% endif %}
+                </p>
+            </div>
+        </article>
+        {% endif %}
+        {% endfor %}
+    </div>
+    {% elif not featured_live %}
+    <p class="empty-state reveal"><strong>Sin transmisiones</strong><p>No hay canales en vivo en este momento. Vuelve cuando empiece la jornada.</p></p>
+    {% endif %}
+</section>

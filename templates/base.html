@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#02050f">
+    <meta name="description" content="{% block description %}Sitio oficial de The Diamonds League, liga competitiva de HaxBall X5.{% endblock %}">
+    <meta name="color-scheme" content="dark">
+    <meta name="author" content="{{ app_name }}">
+    <meta name="robots" content="{% block robots %}index, follow{% endblock %}">
+    <meta property="og:site_name" content="{{ app_name }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{% block og_title %}{{ app_name }}{% endblock %}">
+    <meta property="og:description" content="{% block og_description %}Liga competitiva de HaxBall X5.{% endblock %}">
+    <meta property="og:image" content="{% block og_image %}{{ url_for('static', filename='img/diamonds-logo.webp', _external=True) }}{% endblock %}">
+    <meta name="twitter:card" content="summary_large_image">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/favicon.png') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    {% block head_extra %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+    <a class="skip-link" href="#main">Saltar al contenido</a>
+
+    {% block splash %}
+    <div class="splash" aria-hidden="true">
+        <div class="splash-mosaic">
+            <span class="tile-navy"></span><span class="tile-teal"></span><span class="tile-cyan"></span>
+            <span class="tile-lime"></span><span class="tile-ice"></span><span class="tile-cyan"></span>
+            <span class="tile-lime"></span><span class="tile-ice"></span><span class="tile-navy"></span>
+            <span class="tile-teal"></span><span class="tile-ice"></span><span class="tile-navy"></span>
+            <span class="tile-teal"></span><span class="tile-cyan"></span><span class="tile-lime"></span>
+            <span class="tile-teal"></span><span class="tile-cyan"></span><span class="tile-lime"></span>
+            <span class="tile-ice"></span><span class="tile-navy"></span><span class="tile-lime"></span>
+            <span class="tile-ice"></span><span class="tile-navy"></span><span class="tile-teal"></span>
+            <span class="tile-navy"></span><span class="tile-cyan"></span><span class="tile-ice"></span>
+            <span class="tile-cyan"></span><span class="tile-lime"></span><span class="tile-ice"></span>
+            <span class="tile-navy"></span><span class="tile-cyan"></span><span class="tile-ice"></span>
+            <span class="tile-lime"></span><span class="tile-navy"></span><span class="tile-teal"></span>
+            <span class="tile-ice"></span><span class="tile-cyan"></span><span class="tile-lime"></span>
+            <span class="tile-teal"></span><span class="tile-cyan"></span><span class="tile-lime"></span>
+        </div>
+        <div class="splash-core">
+            <div class="splash-logo"><img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt=""></div>
+            <div class="splash-word">
+                <strong>THE DIAMONDS</strong>
+                <span>LEAGUE</span>
+                <small>LIGA DE HAXBALL X5</small>
+            </div>
+            <div class="splash-progress"><span></span></div>
+        </div>
+    </div>
+    {% endblock %}
+
+    {% block header %}{% include "partials/_header.html" %}{% endblock %}
+    <div class="admin-scrim" hidden></div>
+    {% block admin_toggle %}
+    {% if current_user.is_authenticated and current_user.is_staff %}
+    <button class="admin-nav-toggle" type="button" aria-expanded="false" aria-label="Abrir menú del panel">
+        <span></span><span></span><span></span>
+    </button>
+    {% endif %}
+    {% endblock %}
+
+    {% block content %}{% endblock %}
+
+    {% block footer %}{% include "partials/_footer.html" %}{% endblock %}
+
+    {% include "partials/_flash.html" %}
+    {% block lightbox %}{% include "partials/_lightbox.html" %}{% endblock %}
+
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+    {% block scripts %}{% endblock %}
+    {% block admin_scripts %}
+    {% if current_user.is_authenticated and current_user.is_staff %}
+    <script src="{{ url_for('static', filename='js/admin.js') }}" defer></script>
+    {% endif %}
+    {% endblock %}
+</body>
+</html>

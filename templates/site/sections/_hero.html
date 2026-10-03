@@ -1,0 +1,64 @@
+{# ============================================================================
+   HERO — portada de la liga
+   ========================================================================= #}
+{% set league_name = site_settings.league_name or 'THE DIAMONDS LEAGUE' %}
+{% set league_sub = site_settings.league_tagline or 'LIGA COMPETITIVA DE HAXBALL' %}
+
+<section class="hero section-anchor" id="inicio" data-section="inicio">
+    <div class="hero-lines" aria-hidden="true"></div>
+
+    <div class="hero-center">
+        <p class="hero-label">
+            <span aria-hidden="true"></span>{{ league_sub }}<span aria-hidden="true"></span>
+        </p>
+
+        <div class="hero-logo-stage">
+            <span class="hero-orbit hero-orbit--one" aria-hidden="true"></span>
+            <span class="hero-orbit hero-orbit--two" aria-hidden="true"></span>
+            <span class="hero-orbit hero-orbit--three" aria-hidden="true"></span>
+            <div class="hero-logo-frame">
+                <img src="{{ url_for('static', filename='img/logo-mark.png') }}" alt="Logo de {{ league_name }}" width="180" height="180">
+            </div>
+        </div>
+
+        <h1>THE DIAMONDS<span>LEAGUE</span></h1>
+
+        <p class="hero-copy">
+            {{ site_settings.league_description or 'La liga competitiva de HaxBall donde compiten los mejores clubes de la comunidad. Revisa divisiones, fechas, resultados, tabla, premios y las salas públicas de la liga.' }}
+        </p>
+
+        <div class="hero-actions">
+            <a class="btn btn--primary" href="#liga">VER COMPETENCIA</a>
+            <a class="btn" href="#pubs">IR A DIAMONDS PUBS</a>
+        </div>
+    </div>
+
+    <div class="hero-scorebar">
+        <div>
+            <small>MODALIDAD</small>
+            <strong>{{ division.modality if division else '5 VS 5' }}</strong>
+        </div>
+        <div>
+            <small>DIVISIONES</small>
+            <strong data-count="{{ '%02d'|format(divisions|length) if divisions else 0 }}">0</strong>
+        </div>
+        <div>
+            <a href="#pubs"><small>SALAS PUBLICAS</small><strong data-count="{{ '%02d'|format(site_stats.rooms_open) }}">0</strong></a>
+        </div>
+        <div>
+            <small>ESTADO</small>
+            <strong class="text-lime">{{ site_settings.league_status or 'ACTIVA' }}</strong>
+        </div>
+    </div>
+</section>
+
+{# --- Marquesina de modulos oficiales --- #}
+<div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+        {% for _ in range(2) %}
+            {% for item in ['FECHAS','RESULTADOS','CLASIFICACION','GOLEADORES','ASISTIDORES','CLEAN SHEETS','X5 IDEAL','PREDICCIONES','SANCIONES','MUSEO','PREMIOS'] %}
+                <span>{{ item }}</span><i></i>
+            {% endfor %}
+        {% endfor %}
+    </div>
+</div>

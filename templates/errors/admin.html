@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}{{ code }} · {{ app_name }}{% endblock %}
+{% block robots %}noindex, follow{% endblock %}
+{% block body_class %}page-error page-error--admin{% endblock %}
+
+{% block content %}
+<main id="main" class="error-shell">
+    <section class="error-card reveal">
+        <span class="error-code mono">{{ code }}</span>
+        <h1>{{ message }}</h1>
+        {% if hint %}<p class="text-muted">{{ hint }}</p>{% endif %}
+        <div class="error-actions">
+            <a class="btn btn--primary" href="{{ url_for('admin.dashboard') }}">VOLVER AL PANEL</a>
+            <a class="btn btn--ghost" href="{{ url_for('site.index') }}">IR A LA PAGINA</a>
+        </div>
+    </section>
+</main>
+{% endblock %}
