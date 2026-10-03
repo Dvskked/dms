@@ -25,6 +25,25 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def nulls_last(column, descending: bool = True) -> tuple:
+    """Equivalente portable de `NULLS LAST` (MySQL/MariaDB no lo soportan).
+
+    Escribir `.nullslast()` genera `... DESC NULLS LAST`, que en MySQL da un
+    error 1064 de sintaxis. Se reproduce el comportamiento con `IS NULL`:
+
+        order_by(*nulls_last(Match.played_on))                  # descendente
+        order_by(*nulls_last(Match.played_on, descending=False)) # ascendente
+
+    El orden de las dos expresiones no es el mismo en los dos sentidos: al
+    ordenar en ascendente MySQL y SQLite ya colocan los NULL delante, asi que
+    hay que empujarlos al final con `IS NULL` *antes* del valor.
+    """
+    if descending:
+        # En descendente los NULL ya salen al final; el IS NULL es explicito.
+        return (column.desc(), column.is_(None))
+    return (column.is_(None), column.asc())
+
+
 def slugify(value: str, max_length: int = 90) -> str:
     """Normaliza a un slug ascii en minusculas."""
     normalized = unicodedata.normalize("NFKD", value or "")

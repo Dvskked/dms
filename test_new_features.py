@@ -9,6 +9,7 @@ cada comprobacion de base de datos usa `q()`, que abre su propio contexto.
 """
 from __future__ import annotations
 
+import datetime
 import io
 import os
 import sys
@@ -545,6 +546,47 @@ def test_suggestions(app, ids) -> None:
           q(app, lambda: EmailLog.query.filter_by(template="suggestion").count()) >= 1)
 
 
+def test_nulls_last(app, ids) -> None:
+    """Los nulos van al final y el SQL no usa NULLS LAST (MySQL da error 1064)."""
+    print("\n=== 11. ORDEN DE FECHAS NULLS LAST ===")
+    from sqlalchemy.dialects import mysql
+
+    from models import MuseumItem
+    from utils import nulls_last
+
+    def sembrar():
+        MuseumItem.query.delete()
+        fechas = ["2026-01-10", "2026-05-20", "2026-03-15", None]
+        for index, fecha in enumerate(fechas):
+            db.session.add(MuseumItem(
+                title=f"Museo {index}", slug=f"museo-{index}", sort_order=index,
+                awarded_on=None if fecha is None else datetime.date.fromisoformat(fecha),
+            ))
+        db.session.commit()
+
+    q(app, sembrar)
+
+    def titulos(descending: bool) -> list[str]:
+        return [row.title for row in MuseumItem.query.order_by(
+            *nulls_last(MuseumItem.awarded_on, descending=descending))]
+
+    check("descendente: la fecha vacia queda al final", q(app, titulos, True)[-1] == "Museo 3")
+    check("ascendente: la fecha vacia queda al final", q(app, titulos, False)[-1] == "Museo 3")
+
+    def sql_mysql(descending: bool) -> str:
+        columns = nulls_last(MuseumItem.awarded_on, descending=descending)
+        return str(db.select(*columns).compile(dialect=mysql.dialect())).upper()
+
+    check("el SQL no lleva NULLS LAST",
+          "NULLS LAST" not in q(app, sql_mysql, True) and "NULLS LAST" not in q(app, sql_mysql, False))
+
+    def borrar():
+        MuseumItem.query.delete()
+        db.session.commit()
+
+    q(app, borrar)
+
+
 def main() -> int:
     app = create_app("testing")
     try:
@@ -571,6 +613,7 @@ def run(app) -> int:
     test_permissions(app, ids, client)
     test_auth_gate(app)
     test_suggestions(app, ids)
+    test_nulls_last(app, ids)
 
     failed = [label for ok, label in results if not ok]
     print("\n" + "=" * 52)
