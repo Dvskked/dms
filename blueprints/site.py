@@ -4,15 +4,19 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import date, timedelta
 
-from flask import Blueprint, abort, current_app, render_template, request
-from flask_login import current_user
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 from sqlalchemy import func
 
 from extensions import db
+from forms import SuggestionForm
+from mailer import notify_staff_new_suggestion
 from models import (
     Alliance, Article, Category, Division, Donation, DonationChannel, DonationGoal,
-    LiveStream, Match, MuseumItem, Player, PromotionSlot, Room, RuleEntry, SanctionLevel,
-    Season, SocialLink, StaffMember, Standing, Team, current_season, setting,
+    LiveStream, Match, MatchReport, MuseumItem, Player, PlayerMatchStat, PromotionSlot, Room,
+    RuleEntry, SanctionLevel, Season, SocialLink, StaffMember, Standing, Suggestion,
+    SuggestionStatus, SUGGESTION_CATEGORIES, Team, current_season,
+    division_standings, log_activity, player_stat_rows, setting,
 )
 from utils import excerpt, rich_text
 
@@ -71,16 +75,10 @@ def division_bundle(division: Division) -> dict:
             rango = "Fecha por definir"
         calendar.append({"journey": journey, "matches": items, "range": rango})
 
-    rows = (
-        Standing.query.filter_by(division_id=division.id)
-        .join(Team, Standing.team_id == Team.id)
-        .order_by(Standing.points.desc(), (Standing.goals_for - Standing.goals_against).desc(), Team.name)
-        .all()
-    )
-    for index, row in enumerate(rows, start=1):
-        row.position = index
-
+    rows = division_standings(division.id)
     teams = Team.query.filter_by(division_id=division.id, is_active=True).order_by(Team.sort_order, Team.name).all()
+
+    stats = player_stat_rows(division_id=division.id)
 
     return {
         "division": division,
@@ -90,7 +88,11 @@ def division_bundle(division: Division) -> dict:
         "scorers": stat_leaders(team_ids, "goals"),
         "assistants": stat_leaders(team_ids, "assists"),
         "keepers": stat_leaders(team_ids, "clean_sheets"),
+        "own_goalers": stat_leaders(team_ids, "own_goals", order="asc", limit=8),
+        "players": stats,
         "total_matches": len(matches),
+        "goals_total": sum(s.goals or 0 for s in stats),
+        "assists_total": sum(s.assists or 0 for s in stats),
     }
 
 
@@ -237,6 +239,149 @@ def live_room(stream_id: int):
         .limit(6).all()
     )
     return render_template("site/live_room.html", stream=stream, others=others, upcoming=upcoming)
+
+
+# --------------------------------------------------------------------------- #
+# Informe publico de un partido
+# --------------------------------------------------------------------------- #
+@bp.route("/partidos/<int:pk>")
+def match_report(pk: int):
+    """Foto del partido, resultado, goleadores y tabla de estadisticas."""
+    match = db.session.get(Match, pk) or abort(404)
+    report = match.report
+
+    if report is not None and not report.is_published and not current_user.is_staff:
+        # Solo el staff ve borradores; un jugador registrado tampoco.
+        abort(404)
+
+    home_stats = match.stats_for(match.home_team_id)
+    away_stats = match.stats_for(match.away_team_id)
+
+    journey_matches = (
+        Match.query.filter_by(division_id=match.division_id, journey=match.journey)
+        .order_by(Match.kickoff)
+        .all()
+    )
+    others = [m for m in journey_matches if m.id != match.id]
+
+    return render_template(
+        "site/match_report.html",
+        match=match,
+        report=report,
+        home_stats=home_stats,
+        away_stats=away_stats,
+        scorers=match.scorers,
+        others=others,
+        computed=(match.home_goals_from_stats, match.away_goals_from_stats),
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Estadisticas generales: tabla de las divisiones + tabla de jugadores
+# --------------------------------------------------------------------------- #
+@bp.route("/estadisticas")
+def stats():
+    """Tabla de las divisiones y tabla de estadisticas individuales."""
+    season = current_season()
+    divisions = (
+        Division.query.filter_by(season_id=season.id).order_by(Division.level).all()
+        if season else []
+    )
+    tables = [
+        {
+            "division": division,
+            "standings": division_standings(division.id),
+            "teams": Team.query.filter_by(division_id=division.id, is_active=True)
+                             .order_by(Team.sort_order, Team.name).all(),
+            "players": player_stat_rows(division_id=division.id),
+            "calendar": Match.query.filter_by(division_id=division.id)
+                                   .order_by(Match.journey.desc()).limit(6).all(),
+        }
+        for division in divisions
+    ]
+    return render_template(
+        "site/stats.html",
+        season=season,
+        divisions=divisions,
+        tables=tables,
+        scorers=player_stat_rows(limit=15, season_id=season.id if season else None),
+        recent_reports=(
+            Match.query.join(MatchReport, MatchReport.match_id == Match.id)
+            .filter(MatchReport.is_published.is_(True))
+            .order_by(Match.played_on.desc().nullslast())
+            .limit(6)
+            .all()
+        ),
+    )
+
+
+@bp.route("/sugerencias", methods=["GET", "POST"])
+@login_required
+def suggestions():
+    """Canal de sugerencias: los jugadores dejan su opinion y se guarda en la base."""
+    form = SuggestionForm()
+    if form.validate_on_submit():
+        suggestion = Suggestion(
+            user_id=current_user.id,
+            category=form.category.data,
+            title=form.title.data.strip(),
+            body=form.body.data.strip(),
+            status=SuggestionStatus.NEW,
+        )
+        db.session.add(suggestion)
+        db.session.flush()
+        log_activity(current_user, "crear", "sugerencia", suggestion.id,
+                     f"{suggestion.category_label}: {suggestion.title}")
+        db.session.commit()
+
+        # Aviso al staff por correo: aviso al canal de sugerencias.
+        notify_staff_new_suggestion(suggestion, current_user)
+        flash("Gracias por opinar. Tu sugerencia ya esta en el canal del staff.", "success")
+        return redirect(url_for("site.suggestions"))
+
+    categoria = request.args.get("categoria", "").strip()
+    estado = request.args.get("estado", "").strip()
+    consulta = Suggestion.query
+    if categoria in SUGGESTION_CATEGORIES:
+        consulta = consulta.filter(Suggestion.category == categoria)
+    if estado in SuggestionStatus.ALL:
+        consulta = consulta.filter(Suggestion.status == estado)
+
+    filas = (
+        consulta.order_by(Suggestion.created_at.desc())
+        .paginate(page=request.args.get("pagina", 1, type=int), per_page=15, error_out=False)
+    )
+    return render_template(
+        "site/suggestions.html",
+        form=form,
+        rows=filas,
+        categorias=SUGGESTION_CATEGORIES,
+        categoria=categoria,
+        estado=estado,
+    )
+
+
+@bp.route("/sugerencias/<int:pk>/voto", methods=["POST"])
+@login_required
+def suggestion_like(pk: int):
+    """Un voto por usuario y sugerencia (se controla con la tabla de votos)."""
+    suggestion = db.session.get(Suggestion, pk) or abort(404)
+    from models import SuggestionVote
+
+    existing = SuggestionVote.query.filter_by(
+        suggestion_id=suggestion.id, user_id=current_user.id
+    ).first()
+    if existing:
+        db.session.delete(existing)
+        suggestion.likes = max((suggestion.likes or 1) - 1, 0)
+        liked = False
+    else:
+        db.session.add(SuggestionVote(suggestion_id=suggestion.id, user_id=current_user.id))
+        suggestion.likes = (suggestion.likes or 0) + 1
+        liked = True
+    db.session.commit()
+    flash("Voto registrado." if liked else "Voto quitado.", "info")
+    return redirect(request.referrer or url_for("site.suggestions"))
 
 
 # --------------------------------------------------------------------------- #

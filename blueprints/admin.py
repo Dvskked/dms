@@ -11,7 +11,7 @@ from functools import wraps
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from wtforms.fields import FileField, SelectField
 
 from extensions import db
@@ -20,10 +20,12 @@ from forms import (
     FlaskForm, LiveStreamForm, MatchForm, MuseumForm, PlayerForm, RoomForm, RuleForm, SanctionLevelForm,
     SocialForm, StaffForm, TeamForm, UserForm,
 )
+from forms import MatchReportForm, PlayerStatForm, RosterPlayerForm, SuggestionReplyForm, TeamCrestForm
 from models import (
-    Alliance, Article, Category, Division, Donation, DonationChannel, LiveStream, Match,
-    MuseumItem, Player, Role, Room, RuleEntry, SanctionLevel, SiteSetting, SocialLink, StaffMember,
-    Standing, Team, User, current_season, log_activity, set_setting,
+    Alliance, Article, Category, Division, Donation, DonationChannel, EmailLog, LiveStream, Match,
+    MatchReport, MuseumItem, Player, PlayerMatchStat, Role, Room, RuleEntry, SanctionLevel, SiteSetting,
+    SocialLink, StaffMember, Standing, Suggestion, SuggestionStatus, Team, User, current_season,
+    log_activity, recompute_player_stats, set_setting,
 )
 from utils import delete_upload, save_upload, slugify, utcnow
 
@@ -38,9 +40,16 @@ bp = Blueprint("admin", __name__, url_prefix="/admin")
 def _guard():
     if not current_user.is_staff:
         abort(403)
-    if request.endpoint in {"admin.promote", "admin.recalculate_standings", "admin.settings",
-                            "admin.settings_save", "admin.duplicate_article"} and not current_user.is_admin:
+    if request.endpoint in ADMIN_ONLY_ENDPOINTS and not current_user.is_admin:
         abort(403)
+
+
+# Rutas reservadas al administrador (no al resto del staff).
+ADMIN_ONLY_ENDPOINTS = {
+    "admin.promote", "admin.recalculate_standings", "admin.recalculate_player_stats",
+    "admin.settings", "admin.settings_save", "admin.duplicate_article", "admin.email_log",
+    "admin.email_log_resend",
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -74,8 +83,8 @@ RESOURCES: dict[str, dict] = {
     ),
     "equipos": dict(
         model=Team, form=TeamForm, icon="04", title="Equipos",
-        subtitle="Plantillas, escudos ydivision de cada club.",
-        fields=["id", "name", "division", "coach", "player_count", "is_active", "actions"],
+        subtitle="Plantillas, escudos y division de cada club.",
+        fields=["id", "name", "crest", "division", "coach", "player_count", "is_active", "actions"],
         search=["name", "short", "coach", "captain"],
         order=(Team.sort_order, Team.name),
     ),
@@ -231,8 +240,10 @@ def dashboard():
         "noticias": Article.query.filter_by(kind=Category.NEWS).count(),
         "informes": Article.query.filter_by(kind=Category.REPORT).count(),
         "equipos": Team.query.count(),
+        "equipos_sin_escudo": Team.query.filter(or_(Team.crest.is_(None), Team.crest == "")).count(),
         "jugadores": Player.query.count(),
         "partidos": Match.query.count(),
+        "informes_partido": MatchReport.query.count(),
         "proximos": Match.query.filter(Match.played_on >= today).count(),
         "salas": Room.query.filter_by(is_open=True).count(),
         "museo": MuseumItem.query.count(),
@@ -255,6 +266,15 @@ def dashboard():
         if division else []
     )
     logged_in_today = db.session.query(User).filter(func.date(User.last_login) == today).count()
+    pending_reports = (
+        Match.query.filter(Match.status == "finished")
+        .outerjoin(MatchReport, MatchReport.match_id == Match.id)
+        .filter(MatchReport.id.is_(None))
+        .order_by(Match.played_on.desc().nullslast())
+        .limit(6)
+        .all()
+    )
+    recent_emails = EmailLog.query.order_by(EmailLog.sent_at.desc()).limit(6).all()
 
     return render_template(
         "admin/dashboard.html",
@@ -268,6 +288,8 @@ def dashboard():
         logged_in_today=logged_in_today,
         resources=RESOURCES,
         today=today,
+        pending_reports=pending_reports,
+        recent_emails=recent_emails,
     )
 
 
@@ -352,11 +374,34 @@ def delete(resource: str, pk: int):
     for attr in ("cover", "avatar", "banner", "crest", "image", "thumbnail", "attachment"):
         delete_upload(getattr(obj, attr, None))
 
-    db.session.delete(obj)
+    if isinstance(obj, Team):
+        extra = _cascade_team_counts(obj)
+        _purge_team(obj)
+    else:
+        extra = 0
+        db.session.delete(obj)
+
     log_activity(current_user, "eliminar", resource, pk, str(label)[:120])
     db.session.commit()
-    flash(f"«{label}» fue eliminado.", "info")
+    suffix = f" junto con {extra} registro(s) dependiente(s)." if extra else ""
+    flash(f"«{label}» fue eliminado{suffix}", "info")
     return redirect(url_for("admin.list_resource", resource=resource))
+
+
+def _cascade_team_counts(team: Team) -> int:
+    """Cuantos registros extra se van a borrar con el equipo."""
+    match_ids = [
+        row[0] for row in db.session.query(Match.id).filter(
+            (Match.home_team_id == team.id) | (Match.away_team_id == team.id)
+        ).all()
+    ]
+    count = len(match_ids) + len(team.players or [])
+    count += Standing.query.filter_by(team_id=team.id).count()
+    count += MuseumItem.query.filter_by(team_id=team.id).count()
+    if match_ids:
+        count += PlayerMatchStat.query.filter(PlayerMatchStat.match_id.in_(match_ids)).count()
+        count += MatchReport.query.filter(MatchReport.match_id.in_(match_ids)).count()
+    return count
 
 
 @bp.route("/<resource>/<int:pk>/toggle", methods=["POST"])
@@ -377,6 +422,177 @@ def toggle(resource: str, pk: int):
     db.session.commit()
     flash("Estado actualizado.", "success")
     return redirect(request.referrer or url_for("admin.list_resource", resource=resource))
+
+
+# --------------------------------------------------------------------------- #
+# Equipos: escudo, plantilla y borrado en cascada
+# --------------------------------------------------------------------------- #
+@bp.route("/equipos/<int:pk>")
+def team_detail(pk: int):
+    """Ficha del equipo: escudo, plantilla, partidos y estadisticas."""
+    team = db.session.get(Team, pk) or abort(404)
+
+    crest_form = TeamCrestForm()
+    player_form = RosterPlayerForm()
+    player_form.team_id = team.id
+
+    matches = (
+        Match.query.filter((Match.home_team_id == team.id) | (Match.away_team_id == team.id))
+        .order_by(Match.played_on.desc().nullslast(), Match.journey.desc())
+        .limit(30)
+        .all()
+    )
+    standing = Standing.query.filter_by(team_id=team.id).first()
+
+    return render_template(
+        "admin/team_detail.html",
+        team=team,
+        crest_form=crest_form,
+        player_form=player_form,
+        matches=matches,
+        standing=standing,
+        totals=team.totals,
+    )
+
+
+@bp.route("/equipos/<int:pk>/escudo", methods=["POST"])
+def team_crest(pk: int):
+    """Sube o quita el logo del equipo sin tocar el resto de datos."""
+    team = db.session.get(Team, pk) or abort(404)
+    form = TeamCrestForm()
+    if not form.validate_on_submit():
+        flash("No se pudo guardar el escudo. Revisa que sea una imagen.", "error")
+        return redirect(url_for("admin.team_detail", pk=team.id))
+
+    if form.remove_crest.data and not form.crest.data:
+        delete_upload(team.crest)
+        team.crest = None
+        db.session.commit()
+        flash("Escudo eliminado.", "info")
+        return redirect(url_for("admin.team_detail", pk=team.id))
+
+    saved = save_upload(form.crest.data, subfolder="escudos")
+    if saved:
+        delete_upload(team.crest)
+        team.crest = saved
+        db.session.commit()
+        log_activity(current_user, "escudo", "equipos", team.id, f"escudo de {team.name}")
+        flash("Escudo actualizado.", "success")
+    return redirect(url_for("admin.team_detail", pk=team.id))
+
+
+@bp.route("/equipos/<int:pk>/jugadores", methods=["POST"])
+def team_add_player(pk: int):
+    """Agrega un jugador a la plantilla del equipo desde su ficha."""
+    team = db.session.get(Team, pk) or abort(404)
+    form = RosterPlayerForm()
+    if not form.validate_on_submit():
+        flash("Revisa los datos del jugador.", "error")
+        return redirect(url_for("admin.team_detail", pk=team.id))
+
+    username = form.username.data.strip()
+    existing = Player.query.filter(
+        db.func.lower(Player.username) == username.lower(), Player.team_id == team.id
+    ).first()
+    if existing is not None:
+        flash(f"«{username}» ya esta en la plantilla de {team.name}.", "error")
+        return redirect(url_for("admin.team_detail", pk=team.id))
+
+    player = Player(
+        team_id=team.id,
+        username=username,
+        haxball_id=(form.haxball_id.data or "").strip() or None,
+        position=form.position.data or "MF",
+        number=form.number.data or 0,
+        country=(form.country.data or "").strip() or None,
+        is_captain=bool(form.is_captain.data),
+        is_active=True,
+    )
+    db.session.add(player)
+    log_activity(current_user, "anadir_jugador", "equipos", team.id, f"{username} -> {team.name}")
+    db.session.commit()
+    flash(f"«{username}» se sumo a la plantilla de {team.name}.", "success")
+    return redirect(url_for("admin.team_detail", pk=team.id))
+
+
+@bp.route("/equipos/<int:pk>/jugadores/<int:player_id>/quitar", methods=["POST"])
+def team_remove_player(pk: int, player_id: int):
+    """Saca a un jugador de la plantilla (borra sus datos si no tiene historial)."""
+    team = db.session.get(Team, pk) or abort(404)
+    player = db.session.get(Player, player_id) or abort(404)
+    if player.team_id != team.id:
+        abort(404)
+
+    form = BooleanOnlyForm()
+    if not form.validate_on_submit():
+        abort(400)
+
+    name = player.username
+    has_history = PlayerMatchStat.query.filter_by(player_id=player.id).count()
+    if has_history:
+        # Hay partidos registrados: se marca inactivo para no romper los informes.
+        player.team_id = team.id
+        player.is_active = False
+        db.session.commit()
+        flash(
+            f"«{name}» salio de la plantilla activa; su historial de {has_history} partidos se conserva.",
+            "info",
+        )
+    else:
+        _purge_player(player)
+        db.session.commit()
+        flash(f"«{name}» fue eliminado de la plantilla.", "info")
+    return redirect(url_for("admin.team_detail", pk=team.id))
+
+
+def _purge_player(player: Player) -> None:
+    """Borra al jugador y todo lo que cuelga de el."""
+    MatchReport.query.filter_by(mvp_player_id=player.id).update({"mvp_player_id": None})
+    db.session.delete(player)
+
+
+def _bulk_delete(model, *criteria) -> int:
+    """Borrado masivo solo si queda algo: evita el SAWarning de filas ya borradas."""
+    ids = [row[0] for row in db.session.query(model.id).filter(*criteria).all()]
+    if not ids:
+        return 0
+    return model.query.filter(model.id.in_(ids)).delete(synchronize_session=False)
+
+
+def _purge_team(team: Team) -> None:
+    """Borrado en cascada explicito de un equipo.
+
+    SQLite no aplica los ON DELETE CASCADE del esquema, y en MySQL dependen del
+    motor; por seguridad se borra explicitamente y en el orden correcto.
+    """
+    match_ids = [
+        row[0] for row in db.session.query(Match.id).filter(
+            (Match.home_team_id == team.id) | (Match.away_team_id == team.id)
+        ).all()
+    ]
+    if match_ids:
+        _bulk_delete(PlayerMatchStat, PlayerMatchStat.match_id.in_(match_ids))
+        _bulk_delete(MatchReport, MatchReport.match_id.in_(match_ids))
+        _bulk_delete(Match, Match.id.in_(match_ids))
+
+    # `Team.players`, `Player.match_stats` y `Team.match_stats` llevan
+    # cascade="all, delete-orphan": el borrado del equipo arrastra jugadores y
+    # sus estadisticas. Aqui solo hay que soltar las referencias que no borran.
+    player_ids = [p.id for p in team.players]
+    if player_ids:
+        MatchReport.query.filter(MatchReport.mvp_player_id.in_(player_ids)).update({"mvp_player_id": None})
+
+    _bulk_delete(Standing, Standing.team_id == team.id)
+    MuseumItem.query.filter(MuseumItem.team_id == team.id).update({"team_id": None}, synchronize_session=False)
+    delete_upload(team.crest)
+    # Esas colecciones se cargaron con `selectin` y siguen apuntando a objetos
+    # que el DELETE masivo ya borro. Sin refrescarlas, la cascada delete-orphan
+    # los vuelve a marcar y el ORM emite un segundo DELETE que ya no hace falta.
+    db.session.expire(team, ["match_stats", "players"])
+    for player in team.players:
+        db.session.expire(player, ["match_stats"])
+    db.session.delete(team)
+
 
 
 # --------------------------------------------------------------------------- #
@@ -474,6 +690,259 @@ def recalculate_standings():
     return redirect(request.referrer or url_for("admin.dashboard"))
 
 
+@bp.route("/estadisticas/recalcular", methods=["POST"])
+def recalculate_player_stats():
+    """Rehace los acumulados de cada jugador desde los partidos informados."""
+    form = BooleanOnlyForm()
+    if not form.validate_on_submit() or not current_user.is_admin:
+        abort(403)
+
+    updated = recompute_player_stats()
+    flash(f"Estadisticas de {updated} jugadores recalculadas desde los informes.", "success")
+    return redirect(request.referrer or url_for("admin.dashboard"))
+
+
+# --------------------------------------------------------------------------- #
+# Informe de partido: foto, resultado y estadisticas individuales
+# --------------------------------------------------------------------------- #
+def _roster_for_match(match: Match, used: set[int]) -> list[Player]:
+    """Jugadores de los dos equipos que aun no tienen fila en el informe."""
+    roster = (match.home_team.players or []) + (match.away_team.players or []) \
+        if match.home_team and match.away_team else []
+    return [p for p in roster if p.id not in used]
+
+
+def _populate_stat_choices(form: PlayerStatForm, match: Match) -> None:
+    form.player_id.choices = [("", "— elige un jugador —")] + [
+        (str(p.id), f"{p.username} · {p.position or 'MF'} · {p.team.name if p.team else 'sin equipo'}")
+        for p in _roster_for_match(match, set())
+    ]
+
+
+@bp.route("/partidos/<int:pk>/informe", methods=["GET", "POST"])
+def match_report(pk: int):
+    """Editor del informe: foto, titular, cronica y MVP."""
+    match = db.session.get(Match, pk) or abort(404)
+    is_new = match.report is None
+    report = match.report or MatchReport(match_id=match.id)
+
+    form = MatchReportForm(obj=report)
+
+    # Las opciones del MVP deben existir ANTES de validar: un SelectField sin
+    # `choices` lanza TypeError en cuanto se envia el formulario por POST.
+    used = {stat.player_id for stat in match.player_stats}
+    available = _roster_for_match(match, used)
+    _populate_choices(form)
+    # El MVP actual puede no estar entre los disponibles: se mantiene como opción.
+    mvp_choices = [("", "— sin MVP —")] + [
+        (str(p.id), f"{p.username} · {p.team.short if p.team else ''}") for p in available
+    ]
+    if report.mvp_player_id and str(report.mvp_player_id) not in {c[0] for c in mvp_choices}:
+        current = db.session.get(Player, report.mvp_player_id)
+        if current is not None:
+            mvp_choices.append((str(current.id), f"{current.username} · (MVP guardado)"))
+    form.mvp_player_id.choices = mvp_choices
+
+    if form.validate_on_submit():
+        _save_report(form, report, match, creating=is_new)
+        flash("Informe guardado.", "success")
+        return redirect(url_for("admin.match_report", pk=match.id))
+
+    stat_form = PlayerStatForm()
+    stat_form.player_id.choices = [("", "— elige un jugador —")] + [
+        (str(p.id), f"{p.username} · {p.position or 'MF'} · {p.team.name if p.team else 'sin equipo'}")
+        for p in available
+    ]
+
+    return render_template(
+        "admin/match_report.html",
+        match=match,
+        report=report,
+        form=form,
+        stat_form=stat_form,
+        home_stats=match.stats_for(match.home_team_id),
+        away_stats=match.stats_for(match.away_team_id),
+        scorers=match.scorers,
+        computed=(match.home_goals_from_stats, match.away_goals_from_stats),
+    )
+
+
+def _save_report(form: MatchReportForm, report: MatchReport, match: Match, creating: bool) -> None:
+    # Solo columnas reales del modelo: `csrf_token` y `submit` no existen en la tabla.
+    skip = {"photo", "remove_photo", "csrf_token", "submit"}
+    columns = {c.name for c in MatchReport.__table__.columns}
+    payload = {
+        name: field.data for name, field in form._fields.items()
+        if name not in skip and name in columns
+    }
+    for name, value in payload.items():
+        if isinstance(value, str):
+            value = value.strip() or None
+        setattr(report, name, value)
+
+    if form.photo.data:
+        saved = save_upload(form.photo.data, subfolder="partidos")
+        if saved:
+            delete_upload(report.photo)
+            report.photo = saved
+    if form.remove_photo.data and not form.photo.data:
+        delete_upload(report.photo)
+        report.photo = None
+
+    if not report.author_id:
+        report.author_id = current_user.id
+
+    if creating:
+        db.session.add(report)
+    log_activity(current_user, "informe", "partidos", match.id, match.headline)
+    db.session.commit()
+
+
+@bp.route("/partidos/<int:pk>/informe/estadistica", methods=["POST"])
+def match_stat_add(pk: int):
+    """Agrega una fila a la tabla de estadisticas del partido."""
+    match = db.session.get(Match, pk) or abort(404)
+    form = PlayerStatForm()
+    # `choices` debe existir antes de validar o el SelectField lanza TypeError.
+    _populate_stat_choices(form, match)
+    if not form.validate_on_submit():
+        flash("Revisa la fila de estadisticas.", "error")
+        return redirect(url_for("admin.match_report", pk=match.id))
+
+    player = db.session.get(Player, form.player_id.data) or abort(404)
+    if player.team_id not in (match.home_team_id, match.away_team_id):
+        flash("Ese jugador no disputa este partido.", "error")
+        return redirect(url_for("admin.match_report", pk=match.id))
+
+    if PlayerMatchStat.query.filter_by(match_id=match.id, player_id=player.id).first():
+        flash(f"«{player.username}» ya tiene una fila en este informe.", "error")
+        return redirect(url_for("admin.match_report", pk=match.id))
+
+    stat = PlayerMatchStat(
+        match_id=match.id,
+        player_id=player.id,
+        team_id=player.team_id,
+        goals=form.goals.data or 0,
+        assists=form.assists.data or 0,
+        clean_sheets=form.clean_sheets.data or 0,
+        clean_sheet_seconds=form.clean_sheet_seconds.data or 0,
+        own_goals=form.own_goals.data or 0,
+        yellow_cards=form.yellow_cards.data or 0,
+        red_cards=form.red_cards.data or 0,
+        minutes=form.minutes.data or 0,
+        is_mvp=bool(form.is_mvp.data),
+        note=(form.note.data or "").strip() or None,
+    )
+    db.session.add(stat)
+    db.session.flush()
+
+    # El MVP del informe sigue al jugador marcado como MVP en la tabla.
+    report = match.report or MatchReport(match_id=match.id)
+    report.mvp_player_id = player.id if stat.is_mvp else report.mvp_player_id
+    if db.session.is_modified(report):
+        db.session.add(report)
+
+    log_activity(current_user, "estadistica", "partidos", match.id, player.username)
+    db.session.commit()
+    flash(f"Estadisticas de «{player.username}» anadidas.", "success")
+    return redirect(url_for("admin.match_report", pk=match.id))
+
+
+@bp.route("/partidos/<int:pk>/informe/estadistica/<int:stat_id>/quitar", methods=["POST"])
+def match_stat_remove(pk: int, stat_id: int):
+    match = db.session.get(Match, pk) or abort(404)
+    stat = db.session.get(PlayerMatchStat, stat_id) or abort(404)
+    if stat.match_id != match.id:
+        abort(404)
+
+    form = BooleanOnlyForm()
+    if not form.validate_on_submit():
+        abort(400)
+
+    name = stat.player.username if stat.player else "jugador"
+    if match.report and match.report.mvp_player_id == stat.player_id:
+        match.report.mvp_player_id = None
+    db.session.delete(stat)
+    db.session.commit()
+    flash(f"Fila de «{name}» eliminada del informe.", "info")
+    return redirect(url_for("admin.match_report", pk=match.id))
+
+
+@bp.route("/partidos/<int:pk>/informe/resultado", methods=["POST"])
+def match_sync_score(pk: int):
+    """Calcula el marcador del partido a partir de las estadisticas cargadas."""
+    match = db.session.get(Match, pk) or abort(404)
+    form = BooleanOnlyForm()
+    if not form.validate_on_submit():
+        abort(400)
+
+    if not match.player_stats:
+        flash("Anade al menos una fila de estadisticas antes de calcular el resultado.", "error")
+        return redirect(url_for("admin.match_report", pk=match.id))
+
+    match.home_score = match.home_goals_from_stats
+    match.away_score = match.away_goals_from_stats
+    if match.status in ("scheduled", "live"):
+        match.status = "finished"
+    db.session.commit()
+    flash(f"Resultado actualizado a {match.score_text}.", "success")
+    return redirect(url_for("admin.match_report", pk=match.id))
+
+
+@bp.route("/correos")
+def email_log():
+    """Historial de correos enviados por la aplicacion."""
+    query = EmailLog.query.order_by(EmailLog.sent_at.desc(), EmailLog.id.desc())
+    term = (request.args.get("q") or "").strip()
+    if term:
+        query = query.filter(
+            db.or_(EmailLog.to_email.ilike(f"%{term}%"), EmailLog.subject.ilike(f"%{term}%"))
+        )
+    rows = query.limit(120).all()
+    return render_template(
+        "admin/email_log.html", rows=rows, term=term,
+        failed=EmailLog.query.filter_by(status="failed").count(),
+        sent=EmailLog.query.filter_by(status="sent").count(),
+    )
+
+
+@bp.route("/correos/<int:pk>/reenviar", methods=["POST"])
+def email_log_resend(pk: int):
+    """Reenvia un correo que fallo (p. ej. tras arreglar el SMTP)."""
+    from mailer import send_email
+
+    record = db.session.get(EmailLog, pk) or abort(404)
+    form = BooleanOnlyForm()
+    if not form.validate_on_submit():
+        abort(400)
+    if record.status == "sent":
+        flash("Ese correo ya se habia enviado.", "info")
+        return redirect(url_for("admin.email_log"))
+
+    ok = send_email(record.to_email, record.subject, _fallback_body(record), user=record.user,
+                    template=record.template)
+    if ok:
+        record.status = "sent"
+        record.error = None
+        db.session.commit()
+        flash("Correo reenviado.", "success")
+    else:
+        flash("El correo vuelve a fallar. Revisa MAIL_USERNAME y MAIL_PASSWORD.", "error")
+    return redirect(url_for("admin.email_log"))
+
+
+def _fallback_body(record: EmailLog) -> str:
+    return (
+        f'<div style="font-family:Inter,sans-serif;color:#c3c9d6;background:#101218;'
+        f'padding:24px;border-radius:12px">'
+        f'<p style="margin:0 0 10px;color:#1bebf2;font:700 12px/1 IBM Plex Mono,monospace;'
+        f'letter-spacing:.2em;text-transform:uppercase">The Diamonds League</p>'
+        f'<h1 style="margin:0 0 14px;color:#fff">{record.subject}</h1>'
+        f'<p style="margin:0">Este es el contenido reenviado del aviso de {record.to_email}.</p>'
+        f'</div>'
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Ajustes del sitio
 # --------------------------------------------------------------------------- #
@@ -501,6 +970,56 @@ SETTINGS_GROUPS = {
         ("maintenance_mode", "Modo mantenimiento", "bool"),
     ]),
 }
+
+
+@bp.route("/sugerencias")
+def suggestions():
+    """Todo lo que opinaron los jugadores, para responderlo desde el panel."""
+    query = Suggestion.query.order_by(Suggestion.created_at.desc(), Suggestion.id.desc())
+    estado = (request.args.get("estado") or "").strip()
+    if estado in SuggestionStatus.ALL:
+        query = query.filter(Suggestion.status == estado)
+    rows = query.limit(200).all()
+    return render_template(
+        "admin/suggestions.html",
+        rows=rows,
+        estado=estado,
+        total=Suggestion.query.count(),
+        nuevas=Suggestion.query.filter_by(status=SuggestionStatus.NEW).count(),
+    )
+
+
+@bp.route("/sugerencias/<int:pk>/responder", methods=["POST"])
+def suggestion_reply(pk: int):
+    """Responde a una sugerencia y avisa al jugador por correo."""
+    from mailer import send_suggestion_reply_email
+
+    suggestion = db.session.get(Suggestion, pk) or abort(404)
+    form = SuggestionReplyForm()
+    if not form.validate_on_submit():
+        abort(400)
+
+    suggestion.status = form.status.data
+    suggestion.staff_reply = (form.staff_reply.data or "").strip() or None
+    suggestion.replied_by_id = current_user.id
+    suggestion.replied_at = utcnow() if suggestion.staff_reply else None
+    log_activity(current_user, "responde", "sugerencia", suggestion.id, suggestion.status)
+    db.session.commit()
+
+    if suggestion.staff_reply:
+        send_suggestion_reply_email(suggestion)
+    flash("Respuesta guardada y enviada al jugador.", "success")
+    return redirect(request.referrer or url_for("admin.suggestions"))
+
+
+@bp.route("/sugerencias/<int:pk>/eliminar", methods=["POST"])
+def suggestion_delete(pk: int):
+    suggestion = db.session.get(Suggestion, pk) or abort(404)
+    log_activity(current_user, "elimina", "sugerencia", suggestion.id, suggestion.title)
+    db.session.delete(suggestion)
+    db.session.commit()
+    flash("Sugerencia eliminada.", "info")
+    return redirect(request.referrer or url_for("admin.suggestions"))
 
 
 @bp.route("/ajustes", methods=["GET"])

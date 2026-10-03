@@ -1,6 +1,9 @@
 """Blueprint de autenticacion: registro, login, logout, perfil y contrasena."""
 from __future__ import annotations
 
+import hashlib
+import secrets
+from datetime import timedelta
 from urllib.parse import urljoin, urlparse
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, session, url_for
@@ -8,13 +11,21 @@ from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import func
 
 from extensions import db
-from forms import ChangePasswordForm, GoogleLinkForm, LoginForm, ProfileForm, RegisterForm
-from models import Role, User, log_activity
+from forms import (
+    ChangePasswordForm, ForgotPasswordForm, GoogleLinkForm, LoginForm, ProfileForm,
+    RegisterForm, ResetPasswordForm,
+)
+from mailer import (
+    notify_admins_new_user, send_password_changed_email, send_password_reset_email,
+    send_welcome_email,
+)
+from models import PasswordResetToken, Role, User, log_activity
 from utils import EMAIL_RE, USERNAME_RE, delete_upload, save_upload, utcnow
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 SAFE_NEXT = {"auth.login", "site.index", "admin.dashboard"}
+RESET_TOKEN_TTL = timedelta(hours=2)
 
 
 def lower(column):
@@ -34,6 +45,10 @@ def _is_safe_url(target: str) -> bool:
 def _safe_next(default: str = "site.index") -> str:
     target = request.args.get("next") or request.form.get("next") or ""
     return target if _is_safe_url(target) else url_for(default)
+
+
+def _hash_token(raw: str) -> str:
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
 @bp.route("/register", methods=["GET", "POST"])
@@ -78,10 +93,15 @@ def register():
         user.login_count = (user.login_count or 0) + 1
         db.session.commit()
 
+        # Bienvenida al correo: usuario, que es la liga y donde entrar.
+        send_welcome_email(user)
+        if not is_first_user:
+            notify_admins_new_user(user)
+
         if is_first_user:
             flash("Bienvenido. Eres el administrador principal de la liga.", "success")
             return redirect(url_for("admin.dashboard"))
-        flash("Cuenta creada. Ya puedes entrar al panel y a la zona premium.", "success")
+        flash("Cuenta creada. Te enviamos la bienvenida por correo. Ya puedes entrar al panel.", "success")
         return redirect(url_for("site.index"))
     return render_template("auth/register.html", form=form)
 
@@ -171,14 +191,85 @@ def change_password():
         if not current_user.check_password(form.current_password.data):
             flash("La contrasena actual no es correcta.", "error")
             return render_template("auth/change_password.html", form=form)
+        changed_at = utcnow()
         current_user.set_password(form.new_password.data)
         log_activity(current_user, "cambio_password", "usuario", current_user.id)
         db.session.commit()
+        # Aviso al correo: la contrasena cambio, con fecha y usuario.
+        send_password_changed_email(current_user, changed_at)
         # Tras cambiar la contrasena se invalidan las otras sesiones abiertas.
         session.permanent = True
-        flash("Contrasena actualizada. Las demas sesiones deberan volver a entrar.", "success")
+        flash("Contrasena actualizada. Te enviamos la confirmacion por correo.", "success")
         return redirect(url_for("auth.profile"))
     return render_template("auth/change_password.html", form=form)
+
+
+@bp.route("/recuperar", methods=["GET", "POST"])
+def forgot_password():
+    """Pide el enlace de restablecimiento; siempre responde igual."""
+    if current_user.is_authenticated:
+        return redirect(url_for("auth.profile"))
+
+    form = ForgotPasswordForm()
+    if form.validate_on_submit():
+        identifier = form.identifier.data.strip()
+        user = (
+            User.query.filter(lower(User.username) == identifier.lower()).first()
+            or User.query.filter(lower(User.email) == identifier.lower()).first()
+        )
+        if user is not None and user.is_active:
+            # Un token por solicitud; los anteriores quedan invalidados.
+            PasswordResetToken.query.filter_by(user_id=user.id, used_at=None).delete()
+            raw = secrets.token_urlsafe(32)
+            db.session.add(
+                PasswordResetToken(
+                    user_id=user.id,
+                    token_hash=_hash_token(raw),
+                    expires_at=utcnow() + RESET_TOKEN_TTL,
+                    requested_ip=request.headers.get("X-Forwarded-For", request.remote_addr or "")[:45],
+                )
+            )
+            log_activity(user, "pide_reset", "usuario", user.id)
+            db.session.commit()
+            send_password_reset_email(user, raw)
+
+        flash(
+            "Si esa cuenta existe, te enviamos el enlace por correo. Revisa tambien la carpeta de spam.",
+            "success",
+        )
+        return redirect(url_for("auth.login"))
+    return render_template("auth/forgot_password.html", form=form)
+
+
+@bp.route("/recuperar/<token>", methods=["GET", "POST"])
+def reset_password(token: str):
+    """Consume el token del correo y deja una contrasena nueva."""
+    record = PasswordResetToken.query.filter_by(token_hash=_hash_token(token)).first()
+    if record is None or not record.is_usable:
+        flash("Ese enlace no es valido o ya caduco. Pide uno nuevo.", "error")
+        return redirect(url_for("auth.forgot_password"))
+
+    form = ResetPasswordForm()
+    if form.validate_on_submit():
+        user = record.user
+        if user is None or not user.is_active:
+            flash("Esa cuenta no esta disponible.", "error")
+            return redirect(url_for("auth.forgot_password"))
+
+        changed_at = utcnow()
+        user.set_password(form.new_password.data)
+        record.used_at = changed_at
+        # Invalida el resto de tokens vivos de esa cuenta.
+        PasswordResetToken.query.filter(
+            PasswordResetToken.user_id == user.id, PasswordResetToken.used_at.is_(None)
+        ).update({"used_at": changed_at}, synchronize_session=False)
+        log_activity(user, "reset_password", "usuario", user.id)
+        db.session.commit()
+
+        send_password_changed_email(user, changed_at)
+        flash("Contrasena restablecida. Ya puedes entrar con la nueva.", "success")
+        return redirect(url_for("auth.login"))
+    return render_template("auth/reset_password.html", form=form, token=token)
 
 
 @bp.route("/google", methods=["GET", "POST"])
