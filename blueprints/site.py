@@ -18,7 +18,7 @@ from models import (
     SuggestionStatus, SUGGESTION_CATEGORIES, Team, current_season,
     division_standings, log_activity, player_stat_rows, setting,
 )
-from utils import excerpt, rich_text
+from utils import excerpt, nulls_last, rich_text
 
 bp = Blueprint("site", __name__)
 
@@ -57,7 +57,7 @@ def division_bundle(division: Division) -> dict:
 
     matches = (
         Match.query.filter_by(division_id=division.id)
-        .order_by(Match.journey, Match.played_on.asc().nullslast(), Match.kickoff)
+        .order_by(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff)
         .all()
     )
     grouped: dict[int, list] = defaultdict(list)
@@ -111,7 +111,7 @@ def index():
 
     rooms = Room.query.filter_by(is_open=True).order_by(Room.sort_order, Room.code).all()
     museum = (
-        MuseumItem.query.order_by(MuseumItem.sort_order, MuseumItem.awarded_on.desc().nullslast(), MuseumItem.id.desc())
+        MuseumItem.query.order_by(MuseumItem.sort_order, *nulls_last(MuseumItem.awarded_on), MuseumItem.id.desc())
         .all()
     )
     news = published(Category.NEWS)
@@ -235,7 +235,7 @@ def live_room(stream_id: int):
     upcoming = (
         Match.query
         .filter(Match.played_on >= date.today())
-        .order_by(Match.played_on.asc().nullslast(), Match.kickoff)
+        .order_by(*nulls_last(Match.played_on, descending=False), Match.kickoff)
         .limit(6).all()
     )
     return render_template("site/live_room.html", stream=stream, others=others, upcoming=upcoming)
@@ -308,7 +308,7 @@ def stats():
         recent_reports=(
             Match.query.join(MatchReport, MatchReport.match_id == Match.id)
             .filter(MatchReport.is_published.is_(True))
-            .order_by(Match.played_on.desc().nullslast())
+            .order_by(*nulls_last(Match.played_on))
             .limit(6)
             .all()
         ),
@@ -396,7 +396,7 @@ def api_matches():
         q = q.filter_by(division_id=division_id)
     if journey:
         q = q.filter_by(journey=journey)
-    rows = q.order_by(Match.journey, Match.played_on.asc().nullslast(), Match.kickoff).limit(200).all()
+    rows = q.order_by(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff).limit(200).all()
     return {
         "matches": [
             {

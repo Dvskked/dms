@@ -1,4 +1,4 @@
-﻿"""Blueprint del panel de administracion.
+"""Blueprint del panel de administracion.
 
 Un CRUD generico por recurso (definido en RESOURCES) + un dashboard con metricas.
 Todo lo que cuelga de /admin exige rol admin o staff segun el recurso.
@@ -27,7 +27,7 @@ from models import (
     SocialLink, StaffMember, Standing, Suggestion, SuggestionStatus, Team, User, current_season,
     log_activity, recompute_player_stats, set_setting,
 )
-from utils import delete_upload, save_upload, slugify, utcnow
+from utils import delete_upload, nulls_last, save_upload, slugify, utcnow
 
 bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -100,7 +100,7 @@ RESOURCES: dict[str, dict] = {
         subtitle="Fechas, jornadas, marcadores y enlaces de sala.",
         fields=["id", "journey", "played_on", "home_team", "away_team", "score_text", "status", "actions"],
         search=["stage"],
-        order=(Match.journey, Match.played_on.asc().nullslast(), Match.kickoff),
+        order=(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff),
     ),
     "salas": dict(
         model=Room, form=RoomForm, icon="07", title="Salas de HaxBall (PUBS)",
@@ -114,7 +114,7 @@ RESOURCES: dict[str, dict] = {
         subtitle="Premios, rankings, campeones y trofeos entregados.",
         fields=["id", "title", "category", "division_short", "recipient", "awarded_on", "actions"],
         search=["title", "recipient", "description"],
-        order=(MuseumItem.sort_order, MuseumItem.awarded_on.desc().nullslast()),
+        order=(MuseumItem.sort_order, *nulls_last(MuseumItem.awarded_on)),
     ),
     "alianzas": dict(
         model=Alliance, form=AllianceForm, icon="09", title="Alianzas",
@@ -270,7 +270,7 @@ def dashboard():
         Match.query.filter(Match.status == "finished")
         .outerjoin(MatchReport, MatchReport.match_id == Match.id)
         .filter(MatchReport.id.is_(None))
-        .order_by(Match.played_on.desc().nullslast())
+        .order_by(*nulls_last(Match.played_on))
         .limit(6)
         .all()
     )
@@ -384,7 +384,7 @@ def delete(resource: str, pk: int):
     log_activity(current_user, "eliminar", resource, pk, str(label)[:120])
     db.session.commit()
     suffix = f" junto con {extra} registro(s) dependiente(s)." if extra else ""
-    flash(f"«{label}» fue eliminado{suffix}", "info")
+    flash(f"�{label}� fue eliminado{suffix}", "info")
     return redirect(url_for("admin.list_resource", resource=resource))
 
 
@@ -438,7 +438,7 @@ def team_detail(pk: int):
 
     matches = (
         Match.query.filter((Match.home_team_id == team.id) | (Match.away_team_id == team.id))
-        .order_by(Match.played_on.desc().nullslast(), Match.journey.desc())
+        .order_by(*nulls_last(Match.played_on), Match.journey.desc())
         .limit(30)
         .all()
     )
@@ -495,7 +495,7 @@ def team_add_player(pk: int):
         db.func.lower(Player.username) == username.lower(), Player.team_id == team.id
     ).first()
     if existing is not None:
-        flash(f"«{username}» ya esta en la plantilla de {team.name}.", "error")
+        flash(f"�{username}� ya esta en la plantilla de {team.name}.", "error")
         return redirect(url_for("admin.team_detail", pk=team.id))
 
     player = Player(
@@ -511,7 +511,7 @@ def team_add_player(pk: int):
     db.session.add(player)
     log_activity(current_user, "anadir_jugador", "equipos", team.id, f"{username} -> {team.name}")
     db.session.commit()
-    flash(f"«{username}» se sumo a la plantilla de {team.name}.", "success")
+    flash(f"�{username}� se sumo a la plantilla de {team.name}.", "success")
     return redirect(url_for("admin.team_detail", pk=team.id))
 
 
@@ -535,13 +535,13 @@ def team_remove_player(pk: int, player_id: int):
         player.is_active = False
         db.session.commit()
         flash(
-            f"«{name}» salio de la plantilla activa; su historial de {has_history} partidos se conserva.",
+            f"�{name}� salio de la plantilla activa; su historial de {has_history} partidos se conserva.",
             "info",
         )
     else:
         _purge_player(player)
         db.session.commit()
-        flash(f"«{name}» fue eliminado de la plantilla.", "info")
+        flash(f"�{name}� fue eliminado de la plantilla.", "info")
     return redirect(url_for("admin.team_detail", pk=team.id))
 
 
@@ -713,8 +713,8 @@ def _roster_for_match(match: Match, used: set[int]) -> list[Player]:
 
 
 def _populate_stat_choices(form: PlayerStatForm, match: Match) -> None:
-    form.player_id.choices = [("", "— elige un jugador —")] + [
-        (str(p.id), f"{p.username} · {p.position or 'MF'} · {p.team.name if p.team else 'sin equipo'}")
+    form.player_id.choices = [("", "� elige un jugador �")] + [
+        (str(p.id), f"{p.username} � {p.position or 'MF'} � {p.team.name if p.team else 'sin equipo'}")
         for p in _roster_for_match(match, set())
     ]
 
@@ -733,14 +733,14 @@ def match_report(pk: int):
     used = {stat.player_id for stat in match.player_stats}
     available = _roster_for_match(match, used)
     _populate_choices(form)
-    # El MVP actual puede no estar entre los disponibles: se mantiene como opción.
-    mvp_choices = [("", "— sin MVP —")] + [
-        (str(p.id), f"{p.username} · {p.team.short if p.team else ''}") for p in available
+    # El MVP actual puede no estar entre los disponibles: se mantiene como opci�n.
+    mvp_choices = [("", "� sin MVP �")] + [
+        (str(p.id), f"{p.username} � {p.team.short if p.team else ''}") for p in available
     ]
     if report.mvp_player_id and str(report.mvp_player_id) not in {c[0] for c in mvp_choices}:
         current = db.session.get(Player, report.mvp_player_id)
         if current is not None:
-            mvp_choices.append((str(current.id), f"{current.username} · (MVP guardado)"))
+            mvp_choices.append((str(current.id), f"{current.username} � (MVP guardado)"))
     form.mvp_player_id.choices = mvp_choices
 
     if form.validate_on_submit():
@@ -749,8 +749,8 @@ def match_report(pk: int):
         return redirect(url_for("admin.match_report", pk=match.id))
 
     stat_form = PlayerStatForm()
-    stat_form.player_id.choices = [("", "— elige un jugador —")] + [
-        (str(p.id), f"{p.username} · {p.position or 'MF'} · {p.team.name if p.team else 'sin equipo'}")
+    stat_form.player_id.choices = [("", "� elige un jugador �")] + [
+        (str(p.id), f"{p.username} � {p.position or 'MF'} � {p.team.name if p.team else 'sin equipo'}")
         for p in available
     ]
 
@@ -815,7 +815,7 @@ def match_stat_add(pk: int):
         return redirect(url_for("admin.match_report", pk=match.id))
 
     if PlayerMatchStat.query.filter_by(match_id=match.id, player_id=player.id).first():
-        flash(f"«{player.username}» ya tiene una fila en este informe.", "error")
+        flash(f"�{player.username}� ya tiene una fila en este informe.", "error")
         return redirect(url_for("admin.match_report", pk=match.id))
 
     stat = PlayerMatchStat(
@@ -844,7 +844,7 @@ def match_stat_add(pk: int):
 
     log_activity(current_user, "estadistica", "partidos", match.id, player.username)
     db.session.commit()
-    flash(f"Estadisticas de «{player.username}» anadidas.", "success")
+    flash(f"Estadisticas de �{player.username}� anadidas.", "success")
     return redirect(url_for("admin.match_report", pk=match.id))
 
 
@@ -864,7 +864,7 @@ def match_stat_remove(pk: int, stat_id: int):
         match.report.mvp_player_id = None
     db.session.delete(stat)
     db.session.commit()
-    flash(f"Fila de «{name}» eliminada del informe.", "info")
+    flash(f"Fila de �{name}� eliminada del informe.", "info")
     return redirect(url_for("admin.match_report", pk=match.id))
 
 
@@ -1065,8 +1065,8 @@ def _populate_choices(form) -> None:
         if not isinstance(field, SelectField) or field.choices:
             continue
         if field_name == "division_id":
-            field.choices = [("", "— sin division —")] + [
-                (str(d.id), f"{d.short} · {d.name}") for d in Division.query.order_by(Division.level).all()
+            field.choices = [("", "� sin division �")] + [
+                (str(d.id), f"{d.short} � {d.name}") for d in Division.query.order_by(Division.level).all()
             ]
         elif field_name in ("team_id", "home_team_id", "away_team_id"):
             field.choices = [
