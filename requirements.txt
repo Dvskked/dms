@@ -6,3 +6,14 @@ Flask-Migrate==4.1.0
 python-dotenv==1.1.0
 Werkzeug==3.1.3
 SQLAlchemy==2.0.36
+WTForms==3.2.2
+
+# Validacion de correos (requerida por el validador Email() de WTForms)
+email-validator==2.3.0
+
+# Driver de MySQL para Clever Cloud (con caching_sha2_password)
+PyMySQL==1.1.2
+cryptography>=42.0
+
+# Compresion de imagenes en Pillow (opcional, solo si se usa)
+Pillow==12.3.0

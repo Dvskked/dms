@@ -68,8 +68,10 @@ def check(path, resp, expect=200):
 
 
 print("=== SIN SESION ===")
+# Con REQUIRE_LOGIN=1 la liga esta cerrada: estas rutas deben devolver 302 al login.
 for path in ["/", "/auth/login", "/auth/register"] + [p for p in PUBLIC if p.startswith("/noticias") or p.startswith("/live")]:
-    check(path, client.get(path))
+    expect = 200 if path in ("/auth/login", "/auth/register") else 302
+    check(path, client.get(path), expect=expect)
 
 for path in ["/admin/", "/admin/avisos/", "/admin/ajustes", "/auth/perfil"]:
     check(path, client.get(path), expect=302)
