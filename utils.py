@@ -157,9 +157,19 @@ def allowed_file(filename: str, doc: bool = False) -> bool:
     return ext in allowed
 
 
+def uploads_available() -> bool:
+    """False en Vercel: el disco es efimero y lo subido se pierde."""
+    return bool(current_app.config.get("UPLOADS_PERSISTENT", True))
+
+
 def save_upload(file_storage, subfolder: str = "", doc: bool = False) -> str | None:
     if not file_storage or not file_storage.filename:
         return None
+    if not uploads_available():
+        raise ValueError(
+            "Este despliegue no guarda archivos: pega la imagen por URL "
+            "(campo 'imagen URL') en lugar de subirla."
+        )
     if not allowed_file(file_storage.filename, doc=doc):
         raise ValueError("Formato de archivo no permitido.")
 
