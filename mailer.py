@@ -1,8 +1,8 @@
-"""Envio de correos por SMTP (Gmail con contrasena de aplicacion).
+﻿"""Envio de correos por SMTP (Gmail con contrasena de aplicacion).
 
 Sin dependencias externas: usa smtplib de la libreria estandar.
-Todos los correos se registran en la tabla `email_logs` para que el staff
-pueda revisar que salio y que fallo.
+Todos los correos se registran en la tabla unificada `logs` (kind='email') para
+que el staff pueda revisar que salio y que fallo.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from email.utils import formataddr, formatdate, make_msgid
 from flask import current_app, url_for
 
 from extensions import db
-from models import EmailLog
+from models import Log, LogKind, PALETTE
 
 __all__ = [
     "send_email", "send_welcome_email", "send_password_changed_email",
@@ -22,12 +22,25 @@ __all__ = [
     "mail_enabled",
 ]
 
+#: La paleta de la web reutilizada en el HTML del correo.
+BG = PALETTE["bg"]
+SECONDARY = PALETTE["secondary"]
+ACCENT = PALETTE["accent"]
+TEXT = PALETTE["text"]
+#: Tinta oscura para escribir sobre cian o lima.
+INK = "#04123F"
+#: Fondos y bordes del correo (oscuros para que resalte el boton).
+CARD = "#0B3FD0"
+LINE = "#0A34A8"
+MUTED = "#B9CBFF"
+DIM = "#8FA9E8"
+
 
 # --------------------------------------------------------------------------- #
 # Plantilla base
 # --------------------------------------------------------------------------- #
 def _layout(title: str, preheader: str, blocks: list[str]) -> str:
-    """HTML del correo: la misma paleta neon del sitio, en modo email."""
+    """HTML del correo: la misma paleta de la liga, en modo email."""
     return f"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -35,36 +48,36 @@ def _layout(title: str, preheader: str, blocks: list[str]) -> str:
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{title}</title>
 </head>
-<body style="margin:0;padding:0;background:#08090c;">
+<body style="margin:0;padding:0;background:{BG};">
 <div style="display:none;max-height:0;overflow:hidden;opacity:0;">{preheader}</div>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-       style="background:#08090c;padding:32px 12px;">
+       style="background:{BG};padding:32px 12px;">
   <tr>
     <td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
-             style="max-width:600px;background:#101218;border:1px solid #1e222c;border-radius:14px;overflow:hidden;">
+             style="max-width:600px;background:{CARD};border:1px solid {LINE};border-radius:14px;overflow:hidden;">
 
         <tr>
-          <td style="padding:26px 30px;border-bottom:1px solid #1e222c;">
+          <td style="padding:26px 30px;border-bottom:1px solid {LINE};">
             <span style="font:700 13px/1 'IBM Plex Mono',monospace;letter-spacing:.22em;
-                         text-transform:uppercase;color:#1bebf2;">The Diamonds League</span>
+                         text-transform:uppercase;color:{ACCENT};">The Diamonds League</span>
             <h1 style="margin:12px 0 0;font:800 26px/1.15 'Bebas Neue',Impact,sans-serif;
-                       letter-spacing:.02em;color:#ffffff;">{title}</h1>
+                       letter-spacing:.02em;color:{TEXT};">{title}</h1>
           </td>
         </tr>
 
         <tr>
-          <td style="padding:30px;font:400 15px/1.65 Inter,-apple-system,Segoe UI,Roboto,sans-serif;color:#c3c9d6;">
+          <td style="padding:30px;font:400 15px/1.65 Inter,-apple-system,Segoe UI,Roboto,sans-serif;color:{MUTED};">
             {blocks[0]}
           </td>
         </tr>
 
         <tr>
-          <td style="padding:22px 30px;background:#0b0d12;border-top:1px solid #1e222c;">
+          <td style="padding:22px 30px;background:{BG};border-top:1px solid {LINE};">
             <p style="margin:0 0 6px;font:700 11px/1.5 'IBM Plex Mono',monospace;
-                      letter-spacing:.18em;text-transform:uppercase;color:#6b7386;">
+                      letter-spacing:.18em;text-transform:uppercase;color:{DIM};">
               Liga competitiva de HaxBall X5</p>
-            <p style="margin:0;font:400 12px/1.6 Inter,sans-serif;color:#5c6376;">
+            <p style="margin:0;font:400 12px/1.6 Inter,sans-serif;color:{DIM};">
               No respondas a este correo. Si no esperabas este mensaje,
               ignoralo o escribe al staff de la liga.</p>
           </td>
@@ -80,22 +93,22 @@ def _layout(title: str, preheader: str, blocks: list[str]) -> str:
 
 def _button(label: str, url: str) -> str:
     return f"""<p style="margin:26px 0;">
-      <a href="{url}" style="display:inline-block;background:#1bebf2;color:#04121a;
+      <a href="{url}" style="display:inline-block;background:{ACCENT};color:{INK};
          font:700 12px/1 'IBM Plex Mono',monospace;letter-spacing:.16em;text-transform:uppercase;
          text-decoration:none;padding:14px 24px;border-radius:8px;">
         {label}</a>
 </p>
-<p style="margin:0;font:400 12px/1.6 'IBM Plex Mono',monospace;color:#6b7386;word-break:break-all;">
+<p style="margin:0;font:400 12px/1.6 'IBM Plex Mono',monospace;color:{DIM};word-break:break-all;">
   {url}</p>"""
 
 
 def _facts(rows: list[tuple[str, str]]) -> str:
     cells = "".join(
         f"""<tr>
-          <td style="padding:9px 0;border-bottom:1px solid #1a1e26;color:#6b7386;
+          <td style="padding:9px 0;border-bottom:1px solid {LINE};color:{DIM};
                      font:400 12px/1.4 'IBM Plex Mono',monospace;letter-spacing:.12em;
                      text-transform:uppercase;width:38%;">{label}</td>
-          <td style="padding:9px 0;border-bottom:1px solid #1a1e26;color:#ffffff;
+          <td style="padding:9px 0;border-bottom:1px solid {LINE};color:{TEXT};
                      font:700 14px/1.4 Inter,sans-serif;">{value}</td>
         </tr>"""
         for label, value in rows
@@ -138,9 +151,11 @@ def _link(endpoint: str, **values) -> str:
 
 
 def _log_email(user, to_email: str, subject: str, template: str, status: str, error: str = "") -> None:
+    """Deja constancia del correo en ``logs``. Nunca rompe la web."""
     try:
         db.session.add(
-            EmailLog(
+            Log(
+                kind=LogKind.EMAIL,
                 user_id=getattr(user, "id", None),
                 to_email=(to_email or "")[:160],
                 subject=subject[:180],
@@ -212,9 +227,9 @@ def send_welcome_email(user) -> bool:
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     login_url = _link("auth.login")
     body = f"""
-      <p style="margin:0 0 18px;font-size:17px;color:#ffffff;">¡Bienvenido a <strong style="color:#1bebf2;">{league}</strong>, {user.display_name or user.username}!</p>
+      <p style="margin:0 0 18px;font-size:17px;color:{TEXT};">¡Bienvenido a <strong style="color:{SECONDARY};">{league}</strong>, {user.display_name or user.username}!</p>
       <p style="margin:0 0 16px;">Tu cuenta ya esta activa. Somos una liga competitiva de
-      <strong style="color:#ffffff;">HaxBall 5 vs 5</strong> con dos divisiones, donde compiten
+      <strong style="color:{TEXT};">HaxBall 5 vs 5</strong> con dos divisiones, donde compiten
       los mejores clubes de la comunidad. Cada jornada se juega, se informa y se actualiza la tabla.</p>
       <p style="margin:0 0 16px;">Desde tu cuenta puedes seguir las tablas de posiciones, los informes
       de los partidos con las fotos y las estadisticas de cada jugador, y entrar al panel de la liga.</p>
@@ -240,18 +255,18 @@ def send_password_changed_email(user, changed_at=None) -> bool:
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     stamp = changed_at.strftime("%d/%m/%Y %H:%M UTC") if changed_at else "ahora mismo"
     body = f"""
-      <p style="margin:0 0 18px;font-size:17px;color:#ffffff;">Contrasena actualizada</p>
+      <p style="margin:0 0 18px;font-size:17px;color:{TEXT};">Contrasena actualizada</p>
       <p style="margin:0 0 16px;">Hola <strong>{user.display_name or user.username}</strong>: la contrasena
-      de tu cuenta en {league} se cambio <strong style="color:#ffffff;">{stamp}</strong>.</p>
+      de tu cuenta en {league} se cambio <strong style="color:{TEXT};">{stamp}</strong>.</p>
       {_facts([
           ("Usuario", user.username),
           ("Correo", user.email),
           ("Cambio", stamp),
           ("Sesiones abiertas", "Las demas sesiones tendran que entrar de nuevo"),
       ])}
-      <p style="margin:18px 0 0;padding:14px 16px;border-left:3px solid #ff3b6b;background:#14161d;
-                font-size:14px;color:#c3c9d6;">
-        <strong style="color:#ff3b6b;">¿No fuiste tu?</strong> Restablece la contrasena de inmediato
+      <p style="margin:18px 0 0;padding:14px 16px;border-left:3px solid #FF3B6B;background:{CARD};
+                font-size:14px;color:{MUTED};">
+        <strong style="color:#FF3B6B;">¿No fuiste tu?</strong> Restablece la contrasena de inmediato
         y avisale al staff de la liga.</p>
       {_button("Restablecer contrasena", _link("auth.forgot_password"))}
     """
@@ -274,7 +289,7 @@ def send_password_reset_email(user, token: str) -> bool:
     reset_url = _link("auth.reset_password", token=token)
     expires = (utcnow() + timedelta(hours=2)).strftime("%d/%m/%Y %H:%M UTC")
     body = f"""
-      <p style="margin:0 0 18px;font-size:17px;color:#ffffff;">Restablecer contrasena</p>
+      <p style="margin:0 0 18px;font-size:17px;color:{TEXT};">Restablecer contrasena</p>
       <p style="margin:0 0 16px;">Hola <strong>{user.display_name or user.username}</strong>: pediste
       dejar una contrasena nueva para tu cuenta de {league}. Usa el boton para crear una.</p>
       {_button("Elegir nueva contrasena", reset_url)}
@@ -283,7 +298,7 @@ def send_password_reset_email(user, token: str) -> bool:
           ("Correo", user.email),
           ("El enlace vence", expires),
       ])}
-      <p style="margin:18px 0 0;font-size:14px;color:#8a91a3;">
+      <p style="margin:18px 0 0;font-size:14px;color:{DIM};">
         Si no solicitaste esto, no hagas nada: tu contrasena actual sigue siendo valida.</p>
     """
     return send_email(
@@ -299,8 +314,8 @@ def send_test_email(to_email: str) -> tuple[bool, str]:
     """Correo de comprobacion desde el comando `flask send-test-email`."""
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     body = f"""
-      <p style="margin:0 0 16px;font-size:17px;color:#ffffff;">Conexion verificada</p>
-      <p style="margin:0 0 16px;">Este es un correo de prueba de <strong style="color:#1bebf2;">{league}</strong>.
+      <p style="margin:0 0 16px;font-size:17px;color:{TEXT};">Conexion verificada</p>
+      <p style="margin:0 0 16px;">Este es un correo de prueba de <strong style="color:{SECONDARY};">{league}</strong>.
       Si lo estas leyendo, el servidor SMTP y la cuenta estan bien configurados.</p>
       {_facts([
           ("Servidor", current_app.config.get("MAIL_SERVER", "")),
@@ -318,7 +333,7 @@ def send_new_account_notice(user, admin) -> bool:
     """Avisa al adminstaff cada vez que se registra alguien nuevo."""
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     body = f"""
-      <p style="margin:0 0 16px;font-size:17px;color:#ffffff;">Nuevo jugador en la liga</p>
+      <p style="margin:0 0 16px;font-size:17px;color:{TEXT};">Nuevo jugador en la liga</p>
       <p style="margin:0 0 16px;"><strong>{user.username}</strong> acaba de crear su cuenta en {league}.</p>
       {_facts([
           ("Usuario", user.username),
@@ -360,15 +375,15 @@ def send_suggestion_notice(suggestion, author, staff) -> bool:
     """Correo al staff: hay una opinion nueva en el canal de sugerencias."""
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     body = f"""
-      <p style="margin:0 0 16px;font-size:17px;color:#ffffff;">Nueva sugerencia de la comunidad</p>
+      <p style="margin:0 0 16px;font-size:17px;color:{TEXT};">Nueva sugerencia de la comunidad</p>
       <p style="margin:0 0 16px;"><strong>{_escape(author.label)}</strong>
       (<code>{_escape(author.username)}</code> · {_escape(author.email)}) opinio en el canal de
       sugerencias de {league}.</p>
-      <div style="margin:22px 0;padding:16px 18px;border-left:3px solid #1bebf2;background:#14161d;">
+      <div style="margin:22px 0;padding:16px 18px;border-left:3px solid {SECONDARY};background:{CARD};">
         <p style="margin:0 0 8px;font:700 11px/1.4 'IBM Plex Mono',monospace;letter-spacing:.16em;
-                  text-transform:uppercase;color:#8a91a3;">{_escape(suggestion.category_label)}</p>
-        <p style="margin:0 0 10px;font-size:16px;color:#ffffff;">{_escape(suggestion.title)}</p>
-        <p style="margin:0;font-size:14px;color:#c3c9d6;white-space:pre-wrap;">{_escape(suggestion.body)}</p>
+                  text-transform:uppercase;color:{DIM};">{_escape(suggestion.category_label)}</p>
+        <p style="margin:0 0 10px;font-size:16px;color:{TEXT};">{_escape(suggestion.title)}</p>
+        <p style="margin:0;font-size:14px;color:{MUTED};white-space:pre-wrap;">{_escape(suggestion.body)}</p>
       </div>
       {_facts([
           ("Usuario", f"{author.label} (@{author.username})"),
@@ -413,12 +428,12 @@ def send_suggestion_reply_email(suggestion) -> bool:
         return False
     league = current_app.config.get("SITE_NAME", "The Diamonds League")
     body = f"""
-      <p style="margin:0 0 16px;font-size:17px;color:#ffffff;">El staff respondio a tu sugerencia</p>
+      <p style="margin:0 0 16px;font-size:17px;color:{TEXT};">El staff respondio a tu sugerencia</p>
       <p style="margin:0 0 16px;">Hola <strong>{_escape(author.label)}</strong>: tu mensaje
       «{_escape(suggestion.title)}» en {league} cambio de estado a
-      <strong style="color:#1bebf2;">{_escape(suggestion.status_label)}</strong>.</p>
-      <div style="margin:22px 0;padding:16px 18px;border-left:3px solid #1bebf2;background:#14161d;">
-        <p style="margin:0;font-size:14px;color:#c3c9d6;white-space:pre-wrap;">{_escape(suggestion.staff_reply)}</p>
+      <strong style="color:{SECONDARY};">{_escape(suggestion.status_label)}</strong>.</p>
+      <div style="margin:22px 0;padding:16px 18px;border-left:3px solid {SECONDARY};background:{CARD};">
+        <p style="margin:0;font-size:14px;color:{MUTED};white-space:pre-wrap;">{_escape(suggestion.staff_reply)}</p>
       </div>
       {_button("Ver el canal de sugerencias", _link("site.suggestions"))}
     """
