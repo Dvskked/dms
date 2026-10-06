@@ -1,90 +1,99 @@
 {% extends "base.html" %}
 {% from "admin/_nav.html" import admin_nav with context %}
 
-{% block title %}Correos — Panel {{ app_name }}{% endblock %}
+{% block title %}Correo y actividad — Panel {{ app_name }}{% endblock %}
 {% block body_class %}page-admin{% endblock %}
 
 {% block content %}
 <main id="main" class="admin-shell">
-    {{ admin_nav('') }}
+    {{ admin_nav('email_log') }}
 
     <div class="admin-main">
         <header class="admin-head reveal">
             <div>
-                <span class="section-tag mono">CORREO</span>
-                <h1>Correos enviados</h1>
+                <span class="section-tag mono">✉</span>
+                <h1>Correo y actividad</h1>
                 <p class="text-muted">
-                    Bienvenidas, cambios de contrasena y avisos de la liga.
+                    Una sola tabla (<code class="mono">logs</code>) guarda los correos que envia la aplicacion
+                    y todo lo que hace el staff en el panel. {{ sent }} enviados · {{ failed }} fallidos.
                 </p>
             </div>
             <div class="admin-head-actions">
-                <form class="search-form" method="get" action="{{ url_for('admin.email_log') }}">
-                    <input class="input" type="search" name="q" value="{{ term }}" placeholder="Buscar por correo o asunto…">
-                    <button class="btn btn--sm" type="submit">BUSCAR</button>
-                </form>
-                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.dashboard') }}">← VOLVER</a>
+                {% for key, label in [('correos', 'CORREOS'), ('actividad', 'ACTIVIDAD')] %}
+                <a class="btn btn--sm {% if vista == key %}btn--primary{% endif %}"
+                   href="{{ url_for('admin.email_log', vista=key) }}">{{ label }}</a>
+                {% endfor %}
             </div>
         </header>
 
-        <div class="stat-quad reveal">
-            <div class="stat-tile stat-tile--accent"><span class="stat-num">{{ sent }}</span><span class="stat-label">Enviados</span></div>
-            <div class="stat-tile"><span class="stat-num">{{ failed }}</span><span class="stat-label">Fallidos</span></div>
-            <div class="stat-tile"><span class="stat-num">{{ rows|length }}</span><span class="stat-label">En la vista</span></div>
-            <div class="stat-tile"><span class="stat-num">{{ rows|selectattr('template', 'equalto', 'welcome')|list|length }}</span><span class="stat-label">Bienvenidas</span></div>
-        </div>
-
         <section class="panel reveal">
-            {% if rows %}
+            <form class="search-form" method="get" action="{{ url_for('admin.email_log') }}">
+                <input type="hidden" name="vista" value="{{ vista }}">
+                <input class="input" type="search" name="q" value="{{ term }}"
+                       placeholder="{{ 'destinatario, asunto o error' if vista == 'correos' else 'usuario, accion o detalle' }}…">
+                <button class="btn btn--sm" type="submit">BUSCAR</button>
+            </form>
+
             <div class="table-scroll">
                 <table class="data-table admin-table">
-                    <caption class="sr-only">Historial de correos</caption>
+                    <caption class="sr-only">Historial</caption>
                     <thead>
                         <tr>
                             <th scope="col">Fecha</th>
-                            <th scope="col">Destinatario</th>
-                            <th scope="col">Asunto</th>
-                            <th scope="col">Tipo</th>
+                            <th scope="col">{{ 'Destinatario' if vista == 'correos' else 'Usuario' }}</th>
+                            <th scope="col">{{ 'Asunto' if vista == 'correos' else 'Accion' }}</th>
+                            <th scope="col">Detalle</th>
                             <th scope="col">Estado</th>
-                            <th scope="col">Acciones</th>
+                            {% if vista == 'correos' %}<th scope="col">Acciones</th>{% endif %}
                         </tr>
                     </thead>
                     <tbody>
                         {% for row in rows %}
                         <tr>
-                            <td class="mono">{{ row.sent_at|fdate('%d/%m/%Y %H:%M') if row.sent_at else '—' }}</td>
-                            <td class="cell-text">{{ row.target }}</td>
-                            <td class="cell-text">{{ row.subject }}</td>
-                            <td class="mono">{{ row.template }}</td>
+                            <td class="mono">{{ row.created_at|fdate('%d/%m/%Y %H:%M') }}</td>
+                            <td>{{ row.target }}</td>
                             <td>
-                                {% if row.status == 'sent' %}
-                                <span class="chip chip--lime">ENVIADO</span>
-                                {% elif row.status == 'failed' %}
-                                <span class="chip chip--red">FALLIDO</span>
+                                {% if vista == 'correos' %}
+                                {{ row.subject or row.template or '—' }}
                                 {% else %}
-                                <span class="chip">OMITIDO</span>
+                                <span class="chip">{{ row.entity or '—' }}</span> {{ row.action_label }}
                                 {% endif %}
                             </td>
+                            <td><span class="cell-text">{{ (row.error if vista == 'correos' else row.summary) or '—' }}</span></td>
                             <td>
-                                {% if row.status == 'failed' %}
-                                <form method="post" action="{{ url_for('admin.email_log_resend', pk=row.id) }}">
-                                    {{ csrf_token }}
-                                    <button class="btn btn--sm" type="submit">REENVAR</button>
-                                </form>
+                                {% if row.status %}
+                                <span class="chip {% if row.status == 'failed' %}chip--danger{% elif row.status == 'sent' %}chip--lime{% endif %}">
+                                    {{ row.status_label }}
+                                </span>
                                 {% else %}
                                 <span class="text-muted">—</span>
                                 {% endif %}
+                            </td>
+                            {% if vista == 'correos' %}
+                            <td>
+                                {% if row.status != 'sent' %}
+                                <form method="post" action="{{ url_for('admin.email_log_resend', pk=row.id) }}"
+                                      data-confirm="Reenviar «{{ row.subject }}» a {{ row.to_email }}?">
+                                    {{ csrf_token }}
+                                    <button class="btn btn--sm" type="submit">REENVIAR</button>
+                                </form>
+                                {% else %}
+                                <span class="text-muted text-sm">—</span>
+                                {% endif %}
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-muted empty-cell">
+                                <strong>Sin registros</strong>
+                                <p>{% if term %}Ningún resultado para “{{ term }}”.{% else %}Aquí aparecerá la actividad del panel y los correos enviados.{% endif %}</p>
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
-            {% else %}
-            <p class="empty-state">
-                <strong>Todavia no se envio ningun correo.</strong>
-                <p>Se registraran aqui las bienvenidas y los avisos de contrasena.</p>
-            </p>
-            {% endif %}
         </section>
     </div>
 </main>

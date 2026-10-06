@@ -1,28 +1,34 @@
 {# ============================================================================
    Macros del panel de administracion.
-   Se invocan desde list.html:  {{ cell(rows, field, resource) }}
+   list.html los usa asi:  {{ cell(row, field, cfg) }}
    ========================================================================= #}
 
-{# --- Detecta el campo booleano de activacion del modelo --- #}
-{% macro toggle_field(row) %}
-{%- for name in ['is_active', 'is_open', 'is_published', 'is_active_account'] -%}
+{# --- Campo booleano de activacion del modelo (para el boton rapido) --- #}
+{% macro toggle_flag(row) %}
+{%- for name in ['is_published', 'is_active', 'is_open', 'is_active_account', 'is_live'] -%}
 {%- if row[name] is defined -%}{{ name }}{%- endif -%}
 {%- endfor -%}
 {%- endmacro %}
 
 
-{# --- Acciones de una fila --- #}
-{% macro row_actions(row, resource) %}
-{%- set flag = toggle_field(row)|trim -%}
-<div class="row-actions">
-    {% if resource == 'equipos' %}
-    <a class="btn btn--sm btn--primary" href="{{ url_for('admin.team_detail', pk=row.id) }}">FICHA</a>
-    {% endif %}
+{# --- Miniatura de una imagen (local o externa) --- #}
+{% macro thumb(row, alt, size='') %}
+{%- set picture = row.picture if row.picture is defined else none -%}
+{%- if picture -%}
+<img class="thumb {{ size }}" src="{{ picture|media }}" alt="{{ alt }}" loading="lazy">
+{%- else -%}
+<span class="thumb thumb--empty" aria-hidden="true">—</span>
+{%- endif -%}
+{%- endmacro %}
 
-    {% if resource == 'calendario' %}
-    <a class="btn btn--sm {% if row.report %}btn--primary{% endif %}"
-       href="{{ url_for('admin.match_report', pk=row.id) }}">
-        {{ 'INFORME' if row.report else '+ INFORME' }}
+
+{# --- Acciones de una fila --- #}
+{% macro row_actions(row, resource, cfg) %}
+{%- set flag = toggle_flag(row)|trim -%}
+<div class="row-actions">
+    {% if cfg.get('row') %}
+    <a class="btn btn--sm btn--primary" href="{{ url_for(cfg['row'], pk=row.id) }}">
+        {{ 'INFORME' if resource == 'calendario' else 'FICHA' }}
     </a>
     {% endif %}
 
@@ -35,8 +41,9 @@
     </form>
     {% endif %}
 
-    {% if resource in ('noticias', 'avisos', 'informes') %}
-    <form method="post" action="{{ url_for('admin.duplicate_article', pk=row.id) }}">
+    {% if resource in ('noticias', 'avisos', 'informes') and current_user.is_admin %}
+    <form method="post" action="{{ url_for('admin.duplicate_article', pk=row.id) }}"
+          data-confirm="Duplicar «{{ row.title }}» como borrador?">
         {{ csrf_token }}
         <button class="btn btn--sm" type="submit">DUPLICAR</button>
     </form>
@@ -44,14 +51,14 @@
 
     {% if resource == 'usuarios' and current_user.is_admin %}
     <form method="post" action="{{ url_for('admin.promote', pk=row.id) }}"
-          data-confirm="{{ 'Quitar el acceso de administrador a ' ~ row.username ~ '?' if row.is_admin else 'Dar acceso de administrador a ' ~ row.username ~ '?' }}">
+          data-confirm="{{ ('Quitar el acceso de administrador a ' ~ row.username ~ '?') if row.is_admin else ('Dar acceso de administrador a ' ~ row.username ~ '?') }}">
         {{ csrf_token }}
         <button class="btn btn--sm" type="submit">{{ 'BAJAR A STAFF' if row.is_admin else 'HACER ADMIN' }}</button>
     </form>
     {% endif %}
 
     <form method="post" action="{{ url_for('admin.delete', resource=resource, pk=row.id) }}"
-          data-confirm="Eliminar este registro? No se puede deshacer.">
+          data-confirm="¿Eliminar «{{ row.name or row.title or row.username or row.label }}»? También se borra lo que dependa de él.">
         {{ csrf_token }}
         <button class="btn btn--sm btn--danger" type="submit">ELIMINAR</button>
     </form>
@@ -60,13 +67,13 @@
 
 
 {# --- Celda generica de la tabla --- #}
-{% macro cell(row, field, resource) %}
+{% macro cell(row, field, resource, cfg) %}
 {%- if field == 'actions' -%}
-    {{ row_actions(row, resource) }}
+    {{ row_actions(row, resource, cfg) }}
 {%- elif field == 'crest' -%}
-    {%- if row.crest -%}
+    {%- if row.picture -%}
     <span class="crest crest--sm">
-        <img src="{{ url_for('static', filename=row.crest_url) }}" alt="Escudo de {{ row.name }}">
+        <img src="{{ row.picture|media }}" alt="Escudo de {{ row.name }}">
     </span>
     {%- else -%}
     <span class="text-muted">Sin logo</span>
@@ -85,7 +92,7 @@
     <span class="mono">{{ value.strftime('%d/%m/%Y') }}</span>
 {%- elif value.id is defined -%}
     <span class="cell-text">
-        {%- if value.title is defined -%}{{ value.title }}
+        {%- if value.title is defined and value.title -%}{{ value.title }}
         {%- elif value.name is defined -%}{{ value.name }}
         {%- elif value.label is defined -%}{{ value.label }}
         {%- elif value.username is defined -%}{{ value.username }}

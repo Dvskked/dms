@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Meta de donacion — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('donation_goal_settings') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">$</span>
+                <h1>Meta de donacion</h1>
+                <p class="text-muted">
+                    La meta vive en los ajustes del sitio. El progreso se calcula con el total de las
+                    donaciones registradas.
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource='donaciones') }}">
+                    VER DONACIONES
+                </a>
+            </div>
+        </header>
+
+        {% if goal %}
+        <section class="panel reveal">
+            <div class="panel-head">
+                <h2>{{ goal.title }}</h2>
+                <span class="mono">{{ goal.percent }}%</span>
+            </div>
+            <p class="goal-line">
+                <strong>{{ goal.current_amount }}</strong>
+                <span class="text-muted">de {{ goal.target_amount }}</span>
+                {% if goal.reached %}
+                <span class="chip chip--lime">META CUBIERTA</span>
+                {% else %}
+                <span class="chip">FALTAN {{ '$%.2f'|format(goal.remaining) }}</span>
+                {% endif %}
+            </p>
+            <div class="progress" role="progressbar" aria-valuenow="{{ goal.percent }}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width:{{ goal.percent }}%"></span>
+            </div>
+            {% if goal.link %}<p class="text-muted text-sm">Enlace de pago: <a href="{{ goal.link }}" rel="noopener">{{ goal.link }}</a></p>{% endif %}
+        </section>
+        {% endif %}
+
+        <section class="panel reveal">
+            <form method="post" class="form-grid" novalidate>
+                {{ form.hidden_tag() }}
+
+                <div class="field">
+                    {{ form.title.label }} {{ form.title(class="input") }}
+                    {% for error in form.title.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.target.label }} {{ form.target(class="input", step="0.01") }}
+                    <p class="field-hint">Importe objetivo de la temporada.</p>
+                    {% for error in form.target.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.link.label }} {{ form.link(class="input", placeholder="https://paypal.me/...") }}
+                    <p class="field-hint">Enlace que se muestra en el bloque DONACION de la pagina publica.</p>
+                    {% for error in form.link.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="field">
+                    {{ form.note.label }} {{ form.note(class="input", rows="4") }}
+                    {% for error in form.note.errors %}<p class="field-error">{{ error }}</p>{% endfor %}
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn btn--primary" type="submit">GUARDAR META</button>
+                    <a class="btn btn--ghost" href="{{ url_for('admin.dashboard') }}">CANCELAR</a>
+                </div>
+            </form>
+        </section>
+    </div>
+</main>
+{% endblock %}

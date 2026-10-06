@@ -3,62 +3,37 @@
     <div class="admin-nav-head">
         <span class="mono">PANEL DE CONTROL</span>
         <strong>{{ app_name }}</strong>
+        <form class="admin-search" method="get" action="{{ url_for('admin.search') }}" role="search">
+            <input class="input input--sm" type="search" name="q" value="{{ request.args.get('q', '') }}"
+                   placeholder="Buscar en todo el panel…" aria-label="Buscar en todo el panel">
+            <button class="btn btn--sm" type="submit">BUSCAR</button>
+        </form>
     </div>
 
     <a class="admin-nav-item {% if not active %}active{% endif %}" href="{{ url_for('admin.dashboard') }}">
         <span aria-hidden="true">▦</span> RESUMEN
     </a>
 
-    <p class="admin-nav-group">CONTENIDO</p>
-    {% for key in ['avisos', 'noticias', 'informes'] %}
-    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
-        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
-    </a>
-    {% endfor %}
-
-    <p class="admin-nav-group">COMPETICION</p>
-    {% for key in ['divisiones', 'equipos', 'jugadores', 'calendario'] %}
-    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
-        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
-    </a>
-    {% endfor %}
-
-    <p class="admin-nav-group">COMUNIDAD</p>
-    {% for key in ['salas', 'museo', 'alianzas', 'redes', 'equipo', 'live'] %}
-    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
-        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
-    </a>
-    {% endfor %}
-
-    <p class="admin-nav-group">ECONOMIA</p>
-    {% for key in ['donacion-canales', 'donaciones'] %}
-    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
-        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
-    </a>
-    {% endfor %}
-
-    <p class="admin-nav-group">NORMAS</p>
-    {% for key in ['reglas', 'sanciones'] %}
-    <a class="admin-nav-item {% if active == key %}active{% endif %}" href="{{ url_for('admin.list_resource', resource=key) }}">
-        <span aria-hidden="true">✎</span> {{ resources[key].title|upper }}
-    </a>
-    {% endfor %}
-
-    {% if current_user.is_admin %}
-    <p class="admin-nav-group">SISTEMA</p>
-    <a class="admin-nav-item {% if active == 'usuarios' %}active{% endif %}" href="{{ url_for('admin.list_resource', resource='usuarios') }}">
-        <span aria-hidden="true">✎</span> {{ resources['usuarios'].title|upper }}
-    </a>
-    <a class="admin-nav-item {% if active == 'correos' %}active{% endif %}" href="{{ url_for('admin.email_log') }}">
-        <span aria-hidden="true">✉</span> CORREOS
-    </a>
-    <a class="admin-nav-item {% if active == 'sugerencias' %}active{% endif %}" href="{{ url_for('admin.suggestions') }}">
-        <span aria-hidden="true">✦</span> SUGERENCIAS
-    </a>
-    <a class="admin-nav-item {% if active == 'ajustes' %}active{% endif %}" href="{{ url_for('admin.settings') }}">
-        <span aria-hidden="true">⚙</span> AJUSTES DEL SITIO
+    {% for section in sections %}
+    <p class="admin-nav-group">{{ section.title }}</p>
+    {% for key in section['keys'] %}
+    {% set cfg = resources[key] %}
+    {% if not cfg.get('admin_only') or current_user.is_admin %}
+    <a class="admin-nav-item {% if active == key %}active{% endif %}"
+       href="{{ url_for('admin.list_resource', resource=key) }}">
+        <span aria-hidden="true">{{ cfg.icon }}</span> {{ cfg.title|upper }}
     </a>
     {% endif %}
+    {% endfor %}
+    {% for page in section.get('pages') or [] %}
+    {% if not page.get('admin_only') or current_user.is_admin %}
+    <a class="admin-nav-item {% if active == page.endpoint.split('.')[-1] %}active{% endif %}"
+       href="{{ url_for(page.endpoint) }}">
+        <span aria-hidden="true">{{ page.icon }}</span> {{ page.label|upper }}
+    </a>
+    {% endif %}
+    {% endfor %}
+    {% endfor %}
 
     <div class="admin-nav-foot">
         <a class="btn btn--sm btn--ghost btn--block" href="{{ url_for('site.index') }}">← VER LA PAGINA</a>

@@ -6,7 +6,7 @@
 
 {% block content %}
 <main id="main" class="admin-shell">
-    {{ admin_nav('ajustes') }}
+    {{ admin_nav('settings') }}
 
     <div class="admin-main">
         <header class="admin-head reveal">
@@ -14,6 +14,11 @@
                 <span class="section-tag">SISTEMA</span>
                 <h1>Ajustes del sitio</h1>
                 <p class="text-muted">Textos, titulos y opciones que se muestran en la pagina publica.</p>
+            </div>
+            <div class="admin-head-actions">
+                <a class="btn btn--sm btn--primary" href="{{ url_for('admin.donation_goal_settings') }}">
+                    META DE DONACION
+                </a>
             </div>
         </header>
 

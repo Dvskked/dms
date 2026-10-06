@@ -56,7 +56,7 @@
             <div class="stat-quad">
                 <div><small>EQUIPOS</small><strong>{{ '%02d'|format(div.teams_count) }}</strong></div>
                 <div><small>JORNADAS</small><strong>{{ '%02d'|format(div.journeys_count) }}</strong></div>
-                <div><small>PLAYOFFS</small><strong>{{ '%02d'|format(div.playoffs_slots) }}</strong></div>
+                <div><small>PLAYOFFS</small><strong>{{ '%02d'|format(div.playoffs_slots if div.playoffs_slots is defined else 0) }}</strong></div>
                 <div><small>PARTIDOS</small><strong>{{ '%02d'|format(bundle.total_matches) }}</strong></div>
             </div>
 
@@ -191,7 +191,7 @@
             </div>
             {% endfor %}
             {% else %}
-            <p class="empty-state"><strong>Sin calendario</strong><p>Esta division aun no tiene partidos programados.</p></p>
+            <div class="empty-state"><strong>Sin calendario</strong><p>Esta division aun no tiene partidos programados.</p></div>
             {% endif %}
         </div>
         {% endfor %}
@@ -228,10 +228,14 @@
                         </tr>
                     </thead>
                     <tbody>
+                        {% set playoffs_slots = 0 %}
+                        {% if div.playoffs_slots is defined and div.playoffs_slots %}{% set playoffs_slots = div.playoffs_slots %}{% endif %}
+                        {% set relegation_slots = 0 %}
+                        {% if div.relegation_slots is defined and div.relegation_slots %}{% set relegation_slots = div.relegation_slots %}{% endif %}
                         {% for row in bundle.standings %}
-                        <tr class="{% if row.position <= div.playoffs_slots %}zone-promo{% elif div.relegation_slots and row.position > (bundle.standings|length - div.relegation_slots) %}zone-releg{% endif %}">
+                        <tr class="{% if row.position <= playoffs_slots %}zone-promo{% elif relegation_slots and row.position > (bundle.standings|length - relegation_slots) %}zone-releg{% endif %}">
                             <td class="num">
-                                <span class="pos {% if div.relegation_slots and row.position > (bundle.standings|length - div.relegation_slots) %}rel{% endif %}">{{ row.position }}</span>
+                                <span class="pos {% if relegation_slots and row.position > (bundle.standings|length - relegation_slots) %}rel{% endif %}">{{ row.position }}</span>
                             </td>
                             <td>
                                 <span class="team-cell">
@@ -373,7 +377,7 @@
                     </div>
                 </article>
                 {% else %}
-                <p class="empty-state"><strong>Sin reglas cargadas</strong><p>El administrador todavia no publico este reglamento.</p></p>
+                <div class="empty-state"><strong>Sin reglas cargadas</strong><p>El administrador todavia no publico este reglamento.</p></div>
                 {% endfor %}
             </div>
         </div>
@@ -383,8 +387,9 @@
             <div class="stat-columns">
                 {% for level in sanctions %}
                 <div class="stat-column reveal">
-                    <div class="stat-column-head" style="{% if level.color == 'yellow' %}color:var(--yellow){% elif level.color == 'red' %}color:var(--red){% endif %}">
-                        <span>{{ level.name }}</span>
+                    <div class="stat-column-head" style="{% if level.color == 'yellow' %}color:var(--yellow){% elif level.color in ('red', 'orange') %}color:var(--red){% endif %}">
+                        <span>{{ level.title }}</span>
+                        <small class="mono">{{ level.color_label }}</small>
                     </div>
                     <div class="sanction-body">
                         <ul class="info-list">

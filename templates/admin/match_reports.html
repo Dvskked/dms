@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Informes de partido — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('match_reports') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">▣</span>
+                <h1>Informes de partido</h1>
+                <p class="text-muted">
+                    {{ pending }} partido(s) finalizado(s) sin informe sobre {{ total }} del calendario.
+                    El informe (foto, cronica, marcador y estadisticas) se guarda en un solo formulario.
+                </p>
+            </div>
+            <div class="admin-head-actions">
+                {% for key, label in [('sin_informe', 'SIN INFORME'), ('con_informe', 'CON INFORME'),
+                                      ('finished', 'FINALIZADOS'), ('', 'TODOS')] %}
+                <a class="btn btn--sm {% if state == key %}btn--primary{% endif %}"
+                   href="{{ url_for('admin.match_reports', estado=key) }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+        </header>
+
+        <section class="panel reveal">
+            <div class="table-scroll">
+                <table class="data-table admin-table">
+                    <caption class="sr-only">Partidos e informes</caption>
+                    <thead>
+                        <tr>
+                            <th scope="col">J</th>
+                            <th scope="col">Fecha</th>
+                            <th scope="col">Partido</th>
+                            <th scope="col">Marcador</th>
+                            <th scope="col">Estado</th>
+                            <th scope="col">Informe</th>
+                            <th scope="col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for match in rows %}
+                        <tr>
+                            <td class="mono">{{ match.journey }}</td>
+                            <td class="mono">{{ match.played_on|fdate if match.played_on else '—' }}</td>
+                            <td>
+                                {{ match.home_team.name if match.home_team else '—' }}
+                                vs
+                                {{ match.away_team.name if match.away_team else '—' }}
+                            </td>
+                            <td class="mono">{{ match.score_text }}</td>
+                            <td><span class="chip">{{ match.status_label }}</span></td>
+                            <td>
+                                {% if match.report and match.report.has_content %}
+                                <span class="chip chip--lime">{{ match.report.headline|truncate(28) or 'Informe' }}</span>
+                                {% else %}
+                                <span class="chip chip--warn">SIN INFORME</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="row-actions">
+                                    <a class="btn btn--sm btn--primary"
+                                       href="{{ url_for('admin.match_report', pk=match.id) }}">
+                                        {{ 'VER INFORME' if match.report else '+ INFORME' }}
+                                    </a>
+                                    <a class="btn btn--sm"
+                                       href="{{ url_for('admin.edit', resource='calendario', pk=match.id) }}">PARTIDO</a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-muted empty-cell">
+                                <strong>Sin partidos</strong>
+                                <p>No hay partidos que cumplan este filtro.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+</main>
+{% endblock %}

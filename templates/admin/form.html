@@ -4,6 +4,30 @@
 {% block title %}{{ 'Nuevo' if obj is none else 'Editar' }} · {{ cfg.title }} — Panel {{ app_name }}{% endblock %}
 {% block body_class %}page-admin{% endblock %}
 
+{% macro render_field(name, field) %}
+<div class="field {% if field.type == 'BooleanField' %}field--check{% endif %}">
+    {% if field.type == 'BooleanField' %}
+    {{ field(class='input input--check') }} <span>{{ field.label.text }}</span>
+    {% else %}
+    {{ field.label }}
+    {% if field.type == 'FileField' %}
+    {{ field(class="input input--file", **{'data-preview': '#preview-' ~ name}) }}
+    <img class="upload-preview-img is-hidden" id="preview-{{ name }}" alt="Vista previa">
+    {% elif field.type == 'TextAreaField' %}
+    {{ field(class="input", rows="7") }}
+    {% elif field.type == 'SelectField' %}
+    {{ field(class="input") }}
+    {% else %}
+    {{ field(class="input") }}
+    {% endif %}
+    {% endif %}
+    {% for error in field.errors %}
+    <p class="field-error">{{ error }}</p>
+    {% endfor %}
+    {% if field.description %}<p class="field-hint">{{ field.description }}</p>{% endif %}
+</div>
+{% endmacro %}
+
 {% block content %}
 <main id="main" class="admin-shell">
     {{ admin_nav(resource) }}
@@ -16,46 +40,27 @@
                 <p class="text-muted">{{ cfg.title }} — {{ cfg.subtitle }}</p>
             </div>
             <div class="admin-head-actions">
+                {% if cfg.get('row') and obj is not none %}
+                <a class="btn btn--sm" href="{{ url_for(cfg['row'], pk=obj.id) }}">VER FICHA</a>
+                {% endif %}
                 <a class="btn btn--sm btn--ghost" href="{{ url_for('admin.list_resource', resource=resource) }}">← VOLVER</a>
             </div>
         </header>
+
+        {% if obj is not none and obj.picture is defined and obj.picture %}
+        <p class="current-media reveal">
+            <img class="thumb" src="{{ obj.picture|media }}" alt="Imagen actual">
+            <span>Imagen actual. Sube un archivo o pega una URL nueva para cambiarla.</span>
+        </p>
+        {% endif %}
 
         <section class="panel reveal">
             <form method="post" enctype="multipart/form-data" class="form-grid" novalidate>
                 {{ form.hidden_tag() }}
 
-                {% if form._fields|length <= 2 %}
-                <p class="text-muted">
-                    Este modulo usa el formulario automatico: los campos editables se gestionan
-                    directamente en la base de datos. Anade las columnas con <code>flask db migrate</code>.
-                </p>
-                {% endif %}
-
                 {% for name, field in form._fields.items() %}
-                {% if name not in ('csrf_token', 'submit') %}
-                <div class="field {% if field.type in ('BooleanField',) %}field--check{% endif %}">
-                    {% if field.type == 'BooleanField' %}
-                    {{ field() }} <span>{{ field.label.text }}</span>
-                    {% else %}
-                    {{ field.label }}
-                    {% if field.type == 'FileField' %}
-                    {{ field(class="input input--file", **{'data-preview': '#preview-' ~ name}) }}
-                    <img class="upload-preview-img is-hidden" id="preview-{{ name }}" alt="Vista previa">
-                    {% elif field.type == 'TextAreaField' %}
-                    {{ field(class="input", rows="7") }}
-                    {% elif field.type == 'SelectMultipleField' %}
-                    {{ field(class="input", size=6) }}
-                    {% elif name == 'slug' %}
-                    {{ field(class="input", **{'data-slug-target': '1', 'data-slug-source-to': 'title'}) }}
-                    {% else %}
-                    {{ field(class="input") }}
-                    {% endif %}
-                    {% endif %}
-                    {% for error in field.errors %}
-                    <p class="field-error">{{ error }}</p>
-                    {% endfor %}
-                    {% if field.description %}<p class="field-hint">{{ field.description }}</p>{% endif %}
-                </div>
+                {% if name not in ('csrf_token', 'submit') and name not in skip_fields %}
+                {{ render_field(name, field) }}
                 {% endif %}
                 {% endfor %}
 

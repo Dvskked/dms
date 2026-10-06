@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "admin/_nav.html" import admin_nav with context %}
+
+{% block title %}Buscar — Panel {{ app_name }}{% endblock %}
+{% block body_class %}page-admin{% endblock %}
+
+{% block content %}
+<main id="main" class="admin-shell">
+    {{ admin_nav('search') }}
+
+    <div class="admin-main">
+        <header class="admin-head reveal">
+            <div>
+                <span class="section-tag mono">⌕</span>
+                <h1>Buscador global</h1>
+                <p class="text-muted">Un campo que barre las 19 tablas: equipos, jugadores, partidos, articulos, cuentas y enlaces.</p>
+            </div>
+        </header>
+
+        <section class="panel reveal">
+            <form class="search-form search-form--wide" method="get" action="{{ url_for('admin.search') }}" role="search">
+                {{ form.q(class="input", placeholder="equipo, jugador, noticia, usuario...", value=term) }}
+                <button class="btn btn--primary" type="submit">BUSCAR</button>
+            </form>
+        </section>
+
+        {% if term and term|length < 2 %}
+        <section class="panel reveal">
+            <div class="empty-cell"><strong>Escribe al menos dos letras</strong>
+                <p>El buscador barre las 19 tablas del panel; con una sola letra no filtramos nada.</p></div>
+        </section>
+        {% elif term %}
+        <p class="text-muted reveal">{{ total }} resultado(s) para “{{ term }}”.</p>
+
+        {% for group in groups %}
+        <section class="panel reveal">
+            <div class="panel-head">
+                <h2>{{ group.title }}</h2>
+                <span class="mono">{{ group.rows|length }}</span>
+            </div>
+            <ul class="info-list">
+                {% for label, href in group.rows %}
+                <li>
+                    <span>{{ label }}</span>
+                    <a class="btn btn--sm" href="{{ href }}">ABRIR</a>
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% else %}
+        <section class="panel reveal">
+            <div class="empty-cell"><strong>Nada por aqui</strong>
+                <p>Prueba con el nombre exacto del equipo, del jugador o del usuario.</p></div>
+        </section>
+        {% endfor %}
+        {% endif %}
+    </div>
+</main>
+{% endblock %}

@@ -1,8 +1,13 @@
 """Configuracion central de la aplicacion.
 
-Todo es sobreescribible por variables de entorno (ver .env.example). La base de
-datos por defecto es MySQL (Clever Cloud); si el servidor no responde se puede
-caer de forma automatica a SQLite con SQLITE_FALLBACK=1 para seguir desarrollando.
+Todo es sobreescribible por variables de entorno (ver .env.example).
+
+Bases de datos soportadas:
+
+- **SQLite** en local (sin configurar nada): ``instance/diamonds_league.db``.
+- **PostgreSQL** en produccion/Vercel mediante ``DATABASE_URL`` (Neon, Supabase,
+  Railway...). En Vercel es obligatorio: no hay disco persistente.
+- **MySQL** sigue funcionando por si el despliegue actual lo necesita.
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import load_dotenv
+from sqlalchemy.pool import NullPool
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
@@ -42,6 +48,11 @@ def _env_str(key: str, default: str = "") -> str:
     return value.strip() if value and value.strip() else default
 
 
+def is_serverless() -> bool:
+    """True en Vercel u otros entornos que levantan el WSGI por invocacion."""
+    return _env_bool("SERVERLESS", bool(os.getenv("VERCEL")))
+
+
 def sqlite_fallback_uri() -> str:
     return f"sqlite:///{BASE_DIR / 'instance' / 'diamonds_league.db'}"
 
@@ -49,14 +60,17 @@ def sqlite_fallback_uri() -> str:
 def normalize_database_url(url: str) -> str:
     """Normaliza la URL para que todos los drivers funcionen igual.
 
-    - `postgres://` y `mysql://` pasan a sus drivers con driver real.
-    - MySQL siempre con `utf8mb4` (acentos, emojis y escudos).
+    - `postgres://` pasa a `postgresql+psycopg://` (driver v3, el que hay en
+      requirements.txt y el que usa Neon/Supabase).
+    - `mysql://` pasa a `mysql+pymysql://` con `utf8mb4` siempre.
     """
     if not url:
         return ""
     url = url.strip()
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        url = "postgresql+psycopg://" + url[len("postgresql://"):]
     if url.startswith("mysql://"):
         url = "mysql+pymysql://" + url[len("mysql://"):]
 
@@ -69,9 +83,28 @@ def normalize_database_url(url: str) -> str:
     return url
 
 
+def engine_options(serverless: bool) -> dict:
+    """Opciones de pool segun el entorno.
+
+    En Vercel cada peticion puede caer en una instancia distinta y el numero de
+    conexiones simultaneas esta limitado por el plan del proveedor: se usa
+    ``NullPool`` (una conexion por peticion, se cierra al terminar) en lugar de
+    un pool persistente que podria agotar el limite.
+    """
+    if serverless:
+        return {"poolclass": NullPool, "pool_pre_ping": True}
+    return {
+        "pool_pre_ping": True,
+        "pool_recycle": _env_int("DB_POOL_RECYCLE", 280),
+        "pool_size": _env_int("DB_POOL_SIZE", 5),
+        "max_overflow": _env_int("DB_MAX_OVERFLOW", 10),
+    }
+
+
 class BaseConfig:
-    # Crea las tablas ausentes al arrancar. Ponlo en False cuando trabajes
-    # con migraciones: flask --app app db upgrade
+    # Crea las tablas ausentes al arrancar. En Vercel es la via normal (no hay
+    # migraciones en el despliegue); en local ponlo en False cuando trabajes con
+    # migraciones: flask --app app db upgrade
     AUTO_CREATE_TABLES = _env_bool("AUTO_CREATE_TABLES", True)
 
     # --- Core -------------------------------------------------------------
@@ -80,18 +113,13 @@ class BaseConfig:
     TESTING = False
 
     # --- Base de datos ---------------------------------------------------
-    # MySQL (Clever Cloud) por defecto; SQLite local como red de seguridad.
-    #   mysql+pymysql://usuario:clave@host:3306/base?charset=utf8mb4
+    # SQLite local si no hay DATABASE_URL; PostgreSQL en Vercel.
+    SERVERLESS = is_serverless()
     _DB_URL = normalize_database_url(os.getenv("DATABASE_URL", ""))
     SQLALCHEMY_DATABASE_URI = _DB_URL or sqlite_fallback_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ENGINE_OPTIONS = {
-        "pool_pre_ping": True,
-        "pool_recycle": _env_int("DB_POOL_RECYCLE", 280),
-        "pool_size": _env_int("DB_POOL_SIZE", 5),
-        "max_overflow": _env_int("DB_MAX_OVERFLOW", 10),
-    }
-    # 1 = si MySQL no responde, la app arranca igual sobre SQLite (solo dev).
+    SQLALCHEMY_ENGINE_OPTIONS = engine_options(SERVERLESS)
+    # 1 = si el servidor no responde, la app arranca igual sobre SQLite (solo dev).
     SQLITE_FALLBACK = _env_bool("SQLITE_FALLBACK", not (os.getenv("FLASK_ENV", "development").lower() == "production"))
     DB_BOOTSTRAP = _env_bool("DB_BOOTSTRAP", True)  # seed de ajustes + admin al arrancar
 
@@ -115,6 +143,9 @@ class BaseConfig:
 
     # --- Uploads ---------------------------------------------------------
     UPLOAD_FOLDER = _env_str("UPLOAD_FOLDER", str(BASE_DIR / "static" / "uploads"))
+    # En Vercel el disco es efimero: lo que se sube se pierde en el siguiente
+    # despliegue, asi que ahi las imagenes van por URL (campo `image_url`).
+    UPLOADS_PERSISTENT = _env_bool("UPLOADS_PERSISTENT", not SERVERLESS)
     MAX_CONTENT_LENGTH = int(os.getenv("MAX_UPLOAD_MB", "6")) * 1024 * 1024
     ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "svg"}
     ALLOWED_DOC_EXTENSIONS = {"pdf", "png", "jpg", "jpeg", "webp"}
@@ -169,6 +200,24 @@ class ProductionConfig(BaseConfig):
     SESSION_COOKIE_SECURE = True
     SQLITE_FALLBACK = False
     STORE_PASSWORDS_PLAINTEXT = _env_bool("STORE_PASSWORDS_PLAINTEXT", False)
+
+    @classmethod
+    def validate(cls) -> None:
+        """Falla rapido y con un mensaje claro si falta algo de produccion."""
+        problems = []
+        if cls.SQLALCHEMY_DATABASE_URI.startswith("sqlite"):
+            problems.append(
+                "DATABASE_URL debe apuntar a PostgreSQL en produccion "
+                "(Neon, Supabase, Railway...). En Vercel no hay disco para SQLite."
+            )
+        if cls.SQLALCHEMY_DATABASE_URI.startswith("mysql"):
+            problems.append(
+                "MySQL ya no es el motor de produccion soportado: usa PostgreSQL."
+            )
+        if cls.SECRET_KEY == "cambia-esta-clave-en-produccion":
+            problems.append("SECRET_KEY sigue con el valor de ejemplo: define uno propio.")
+        if problems:
+            raise RuntimeError("Configuracion de produccion incompleta:\n- " + "\n- ".join(problems))
 
 
 CONFIG_MAP = {

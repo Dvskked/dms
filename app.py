@@ -21,10 +21,10 @@ from blueprints import BLUEPRINTS
 from blueprints.auth import current_admin_mode, current_premium_mode
 from config import BASE_DIR, get_config, sqlite_fallback_uri
 from extensions import csrf, db, login_manager, migrate
-from models import Role, SiteSetting, User, set_setting
+from models import PALETTE, Role, Setting, User, set_setting
 from utils import utcnow
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"
 
 
 def _log(message: str) -> None:
@@ -35,6 +35,8 @@ def _apply_database(app: Flask) -> None:
     """Comprueba la base configurada y, en desarrollo, cae a SQLite si falla."""
     uri = app.config["SQLALCHEMY_DATABASE_URI"]
     if uri.startswith("sqlite"):
+        app.config["SQLALCHEMY_DATABASE_BACKEND"] = "sqlite"
+        _log(f"Base de datos local: {app.config['SQLALCHEMY_DATABASE_BACKEND']}")
         return
 
     engine = None
@@ -49,7 +51,7 @@ def _apply_database(app: Flask) -> None:
             raise
         _log("=" * 72)
         _log(f"NO SE PUDO CONECTAR A LA BASE DE DATOS: {exc}")
-        _log("Revisa DATABASE_URL en .env (host, usuario, clave y allowed-IPs en Clever Cloud).")
+        _log("Revisa DATABASE_URL en .env (host, usuario, clave y allowed-IPs).")
         _log(f"Arrancando en modo local con SQLite: {sqlite_fallback_uri()}")
         _log("=" * 72)
         app.config["SQLALCHEMY_DATABASE_URI"] = sqlite_fallback_uri()
@@ -61,11 +63,16 @@ def _apply_database(app: Flask) -> None:
 
 
 def create_app(config_name: str | None = None) -> Flask:
+    config_class = get_config(config_name)
+    if hasattr(config_class, "validate"):
+        config_class.validate()
+
     app = Flask(__name__, instance_relative_config=False)
-    app.config.from_object(get_config(config_name))
+    app.config.from_object(config_class)
 
     Path(app.instance_path).mkdir(parents=True, exist_ok=True)
-    Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
+    if app.config.get("UPLOADS_PERSISTENT", True):
+        Path(app.config["UPLOAD_FOLDER"]).mkdir(parents=True, exist_ok=True)
 
     _apply_database(app)
 
@@ -85,14 +92,14 @@ def create_app(config_name: str | None = None) -> Flask:
     app.add_url_rule("/health", "health", health, methods=["GET"])
 
     with app.app_context():
-        # En desarrollo se crean las tablas si faltan; con migraciones aplicadas
-        # se respeta el esquema versionado (AUTO_CREATE_TABLES=0).
+        # En desarrollo y en Vercel se crean las tablas si faltan; con
+        # migraciones aplicadas se respeta el esquema versionado.
         if app.config.get("AUTO_CREATE_TABLES", True):
             db.create_all()
         if app.config.get("DB_BOOTSTRAP", True) and _schema_ready():
             if User.query.count() == 0:
                 _bootstrap_admin()
-            if SiteSetting.query.count() == 0:
+            if Setting.query.count() == 0:
                 for key, value, group in _DEFAULT_SETTINGS:
                     set_setting(key, value, group=group)
             db.session.commit()
@@ -104,7 +111,7 @@ def _schema_ready() -> bool:
     """True si las tablas base ya existen en la base de datos."""
     from sqlalchemy import inspect
 
-    return {"users", "site_settings"}.issubset(set(inspect(db.engine).get_table_names()))
+    return {"users", "settings"}.issubset(set(inspect(db.engine).get_table_names()))
 
 
 def _bootstrap_admin() -> None:
@@ -146,8 +153,12 @@ _DEFAULT_SETTINGS = [
     ("live_headline", "LIVE FUTBOL", "streams"),
     ("live_description", "Transmisiones de futbol en vivo. Abre el canal y mira desde aqui.", "streams"),
     ("donation_headline", "DONACION", "donacion"),
-    ("donation_description", "Tu apoyo sostiene los servidores, los premios y la Temporada 3.", "donacion"),
+    ("donation_description", "Tu apoyo sostiene los servidores, los premios y la temporada.", "donacion"),
     ("donation_note", "Cada aporte se usa para premiar a los mejores jugadores de la liga.", "donacion"),
+    ("donation_goal_title", "Meta de la temporada", "donacion"),
+    ("donation_goal_target", "0", "donacion"),
+    ("donation_goal_note", "", "donacion"),
+    ("donation_goal_link", "", "donacion"),
     ("show_premium_panel", "1", "avances"),
     ("show_admin_shortcut", "1", "avances"),
     ("maintenance_mode", "0", "avances"),
@@ -243,16 +254,17 @@ def register_context(app: Flask) -> None:
             "app_version": __version__,
             "csrf_token": generate_csrf(),
             "site_settings": _settings_map(),
+            "palette": PALETTE,
             "prefs": prefs,
             "current_year": date.today().year,
         }
 
 
 def _settings_map() -> dict:
-    from models import SiteSetting
+    from models import Setting as _Setting
 
     try:
-        return {row.key: row.value for row in SiteSetting.query.all()}
+        return {row.key: row.value for row in _Setting.query.all()}
     except Exception:  # pragma: no cover - antes de crear tablas
         return {}
 
@@ -262,6 +274,16 @@ def _settings_map() -> dict:
 # --------------------------------------------------------------------------- #
 def register_filters(app: Flask) -> None:
     from utils import excerpt, format_date, rich_text
+
+    @app.template_filter("media")
+    def media_filter(value):
+        """URL de una imagen: la externa tal cual, la local desde /static."""
+        if not value:
+            return ""
+        text = str(value)
+        if text.startswith(("http://", "https://", "//", "data:")):
+            return text
+        return url_for("static", filename=text.lstrip("/"))
 
     app.jinja_env.filters["rich"] = rich_text
     app.jinja_env.filters["fdate"] = format_date

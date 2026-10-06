@@ -6,7 +6,7 @@
 
 {% block content %}
 <main id="main" class="admin-shell">
-    {{ admin_nav('sugerencias') }}
+    {{ admin_nav('suggestions') }}
 
     <div class="admin-main">
         <header class="admin-head reveal">
@@ -27,6 +27,20 @@
                 </div>
             </div>
         </header>
+
+        <section class="panel reveal">
+            <form class="search-form" method="get" action="{{ url_for('admin.suggestions') }}">
+                <input class="input" type="search" name="q" value="{{ term }}" placeholder="titulo o texto…">
+                <select class="input" name="categoria">
+                    <option value="">Todas las categorias</option>
+                    {% for key, label in categories.items() %}
+                    <option value="{{ key }}" {% if categoria == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                {% if estado %}<input type="hidden" name="estado" value="{{ estado }}">{% endif %}
+                <button class="btn btn--sm" type="submit">FILTRAR</button>
+            </form>
+        </section>
 
         {% if rows %}
         <ul class="forum-list admin-forum-list">
@@ -73,7 +87,8 @@
                 </form>
 
                 <div class="forum-item-foot">
-                    <form method="post" action="{{ url_for('admin.suggestion_delete', pk=row.id) }}">
+                    <form method="post" action="{{ url_for('admin.suggestion_delete', pk=row.id) }}"
+                          data-confirm="¿Eliminar la sugerencia «{{ row.title }}»?">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <button class="btn btn--sm btn--ghost btn--danger" type="submit">ELIMINAR</button>
                     </form>
@@ -85,10 +100,10 @@
             {% endfor %}
         </ul>
         {% else %}
-        <p class="empty-state">
+        <div class="empty-state">
             <strong>No hay sugerencias con ese filtro.</strong>
             <p>Cuando los jugadores opinen, sus mensajes apareceran aqui.</p>
-        </p>
+        </div>
         {% endif %}
     </div>
 </main>

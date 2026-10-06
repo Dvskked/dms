@@ -1,12 +1,11 @@
 ﻿{% extends "base.html" %}
-{% from "admin/_macros.html" import cell with context %}
+{% from "admin/_nav.html" import admin_nav with context %}
 
 {% block title %}Panel de administracion — {{ app_name }}{% endblock %}
 {% block body_class %}page-admin{% endblock %}
 
 {% block content %}
 <main id="main" class="admin-shell">
-    {% from "admin/_nav.html" import admin_nav with context %}
     {{ admin_nav(None) }}
 
     <div class="admin-main">
@@ -15,16 +14,15 @@
                 <span class="section-tag">ADMINISTRACION</span>
                 <h1>Resumen de la liga</h1>
                 <p class="text-muted">
-                    {{ season.label if season else 'Sin temporada activa' }}
-                    {% if division %} &middot; {{ division.name }}{% endif %}
+                    {{ division.label if division else 'Sin division configurada' }}
                     &middot; {{ today.strftime('%d/%m/%Y') }}
                 </p>
             </div>
             <div class="admin-head-actions">
-                <form method="post" action="{{ url_for('admin.recalculate_standings') }}"
-                      data-confirm="Recalcular la tabla desde todos los partidos?">
+                <form method="post" action="{{ url_for('admin.recalculate_stats') }}"
+                      data-confirm="¿Recalcular las estadísticas de todos los jugadores desde los informes?">
                     {{ csrf_token }}
-                    <button class="btn btn--sm" type="submit">RECALCULAR TABLA</button>
+                    <button class="btn btn--sm" type="submit">RECALCULAR STATS</button>
                 </form>
                 <a class="btn btn--sm btn--primary" href="{{ url_for('site.index') }}">VER PAGINA</a>
             </div>
@@ -34,13 +32,13 @@
         <div class="metric-grid">
             {% for label, value, hint in [
                 ('USUARIOS', stats.usuarios, stats.usuarios_7d ~ ' nuevos esta semana'),
-                ('CONTENIDO', stats.articulos, stats.avisos ~ ' avisos · ' ~ stats.noticias ~ ' noticias'),
-                ('PARTIDOS', stats.partidos, stats.proximos ~ ' por jugarse'),
+                ('CONTENIDO', stats.contenido, stats.avisos ~ ' avisos · ' ~ stats.noticias ~ ' noticias'),
+                ('PARTIDOS', stats.partidos, stats.finalizados ~ ' finalizados · ' ~ stats.proximos ~ ' por jugarse'),
                 ('EQUIPOS', stats.equipos, stats.jugadores ~ ' jugadores'),
                 ('SALAS', stats.salas, 'pubs abiertas'),
-                ('MUSEO', stats.museo, stats.alianzas ~ ' alianzas'),
-                ('STAFF', stats.staff, stats.redes ~ ' redes'),
-                ('DONADO', stats.donado, stats.donaciones ~ ' donaciones'),
+                ('MUSEO', stats.museo, stats.alianzas ~ ' alianzas · ' ~ stats.redes ~ ' redes'),
+                ('STAFF', stats.staff, stats.sugerencias ~ ' sugerencias nuevas'),
+                ('DONADO', '$%.2f'|format(stats.donado), stats.donaciones ~ ' donaciones'),
             ] %}
             <article class="metric-card reveal">
                 <span class="mono">{{ label }}</span>
@@ -51,23 +49,57 @@
         </div>
 
         <div class="admin-columns">
-            {# --- Accesos rapidos por recurso --- #}
+            {# --- Secciones del panel --- #}
             <section class="panel reveal">
                 <div class="panel-head">
                     <h2>Gestion rapida</h2>
-                    <p>Todos los modulos de la pagina, en un solo lugar.</p>
+                    <p>Cinco secciones, todo el contenido de la liga.</p>
                 </div>
-                <div class="quick-grid">
-                    {% for key, cfg in resources.items() %}
-                    {% if not cfg.get('admin_only') or current_user.is_admin %}
-                    <a class="quick-card" href="{{ url_for('admin.list_resource', resource=key) }}">
-                        <span class="mono">{{ cfg.icon }}</span>
-                        <strong>{{ cfg.title }}</strong>
-                        <small>{{ cfg.subtitle }}</small>
-                    </a>
-                    {% endif %}
+                {% for section in sections %}
+                <div class="quick-group">
+                    <p class="quick-group-title mono">{{ section.title }}</p>
+                    <div class="quick-grid">
+                        {% for key in section['keys'] %}
+                        {% set cfg = resources[key] %}
+                        {% if not cfg.get('admin_only') or current_user.is_admin %}
+                        <a class="quick-card" href="{{ url_for('admin.list_resource', resource=key) }}">
+                            <span class="mono">{{ cfg.icon }}</span>
+                            <strong>{{ cfg.title }}</strong>
+                            <small>{{ cfg.subtitle }}</small>
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                        {% for page in section.get('pages') or [] %}
+                        {% if not page.get('admin_only') or current_user.is_admin %}
+                        <a class="quick-card" href="{{ url_for(page.endpoint) }}">
+                            <span class="mono">{{ page.icon }}</span>
+                            <strong>{{ page.label }}</strong>
+                            <small>{{ section.subtitle }}</small>
+                        </a>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endfor %}
+            </section>
+
+            {# --- Informes pendientes --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Partidos sin informe</h2>
+                    <a class="btn btn--sm" href="{{ url_for('admin.match_reports', estado='sin_informe') }}">VER COLA</a>
+                </div>
+                <ul class="info-list">
+                    {% for match in pending_reports %}
+                    <li>
+                        <span class="mono">{{ match.played_on|fdate if match.played_on else 'J' ~ match.journey }}</span>
+                        <a href="{{ url_for('admin.match_report', pk=match.id) }}">{{ match.headline }}</a>
+                        <em class="mono">J{{ match.journey }}</em>
+                    </li>
+                    {% else %}
+                    <li class="text-muted text-sm">Todos los partidos finalizados tienen informe.</li>
                     {% endfor %}
-                </div>
+                </ul>
             </section>
 
             {# --- Proximos partidos --- #}
@@ -78,30 +110,31 @@
                 <ul class="info-list">
                     {% for match in upcoming %}
                     <li>
-                        <span class="mono">{{ match.played_on.strftime('%d/%m') }} {{ match.kickoff or '' }}</span>
+                        <span class="mono">{{ match.played_on|fdate if match.played_on }} {{ match.kickoff or '' }}</span>
                         <span>{{ match.home_team.name if match.home_team else '—' }} vs {{ match.away_team.name if match.away_team else '—' }}</span>
                         <em class="mono">J{{ match.journey }}</em>
                     </li>
                     {% else %}
-                    <li class="text-muted" style="font-size:.8rem">No hay partidos programados.</li>
+                    <li class="text-muted text-sm">No hay partidos programados.</li>
                     {% endfor %}
                 </ul>
             </section>
 
-            {# --- Top equipos --- #}
+            {# --- Clasificacion --- #}
             <section class="panel reveal">
                 <div class="panel-head">
                     <h2>Clasificacion</h2>
+                    {% if division %}<p class="mono">{{ division.short }} · T{{ division.season_number }}</p>{% endif %}
                 </div>
                 <ul class="info-list">
                     {% for row in top_teams %}
                     <li>
-                        <span class="mono">{{ loop.index }}</span>
-                        <span>{{ row.team.name }}</span>
+                        <span class="mono">{{ row.position }}</span>
+                        <a href="{{ url_for('admin.team_detail', pk=row.team.id) }}">{{ row.team.name }}</a>
                         <em class="mono">{{ row.points }} PTS</em>
                     </li>
                     {% else %}
-                    <li class="text-muted" style="font-size:.8rem">Aun no hay tabla calculada.</li>
+                    <li class="text-muted text-sm">Aun no hay division con equipos.</li>
                     {% endfor %}
                 </ul>
             </section>
@@ -114,12 +147,32 @@
                 <ul class="info-list">
                     {% for item in recent_articles %}
                     <li>
-                        <span class="chip chip--cyan">{{ item.kind|upper }}</span>
-                        <span>{{ item.title|truncate(42) }}</span>
+                        <span class="chip chip--cyan">{{ item.kind_label|upper }}</span>
+                        <a href="{{ url_for('admin.edit', resource={'news':'noticias','announcement':'avisos','report':'informes'}[item.kind], pk=item.id) }}">{{ item.title|truncate(42) }}</a>
                         <em>{{ 'PUBLICADO' if item.is_published else 'BORRADOR' }}</em>
                     </li>
                     {% else %}
-                    <li class="text-muted" style="font-size:.8rem">Sin articulos todavia.</li>
+                    <li class="text-muted text-sm">Sin articulos todavia.</li>
+                    {% endfor %}
+                </ul>
+            </section>
+
+            {# --- Actividad reciente --- #}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Actividad reciente</h2>
+                    {% if current_user.is_admin %}
+                    <a class="btn btn--sm" href="{{ url_for('admin.email_log', vista='actividad') }}">VER TODO</a>
+                    {% endif %}
+                </div>
+                <ul class="info-list">
+                    {% for row in recent_activity %}
+                    <li>
+                        <span class="mono">{{ row.created_at|fdate('%d/%m %H:%M') }}</span>
+                        <span>{{ row.target }} · {{ row.summary|truncate(38) }}</span>
+                    </li>
+                    {% else %}
+                    <li class="text-muted text-sm">Sin actividad registrada.</li>
                     {% endfor %}
                 </ul>
             </section>
@@ -138,10 +191,30 @@
                         <em class="mono">{{ user.role|upper }}</em>
                     </li>
                     {% else %}
-                    <li class="text-muted" style="font-size:.8rem">Sin usuarios registrados.</li>
+                    <li class="text-muted text-sm">Sin usuarios registrados.</li>
                     {% endfor %}
                 </ul>
             </section>
+
+            {# --- Meta de donacion --- #}
+            {% if goal %}
+            <section class="panel reveal">
+                <div class="panel-head">
+                    <h2>Meta de donacion</h2>
+                    {% if current_user.is_admin %}
+                    <a class="btn btn--sm" href="{{ url_for('admin.donation_goal_settings') }}">EDITAR</a>
+                    {% endif %}
+                </div>
+                <p class="goal-line">
+                    <strong>{{ goal.title }}</strong>
+                    <span class="mono">{{ goal.current_amount }} / {{ goal.target_amount }} ({{ goal.percent }}%)</span>
+                </p>
+                <div class="progress" role="progressbar" aria-valuenow="{{ goal.percent }}" aria-valuemin="0" aria-valuemax="100">
+                    <span style="width:{{ goal.percent }}%"></span>
+                </div>
+                {% if goal.description %}<p class="text-muted text-sm">{{ goal.description|excerpt(140) }}</p>{% endif %}
+            </section>
+            {% endif %}
         </div>
     </div>
 </main>

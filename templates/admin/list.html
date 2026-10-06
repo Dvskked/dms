@@ -18,7 +18,8 @@
             </div>
             <div class="admin-head-actions">
                 <form class="search-form" method="get" action="{{ url_for('admin.list_resource', resource=resource) }}">
-                    <input class="input" type="search" name="q" value="{{ term }}" placeholder="Buscar en {{ cfg.title|lower }}…">
+                    <input class="input" type="search" name="q" value="{{ term }}"
+                           placeholder="Buscar en {{ cfg.title|lower }}…">
                     <button class="btn btn--sm" type="submit">BUSCAR</button>
                 </form>
                 <a class="btn btn--sm btn--primary" href="{{ url_for('admin.create', resource=resource) }}">+ NUEVO</a>
@@ -27,12 +28,12 @@
 
         <section class="panel reveal">
             <div class="table-scroll">
-                <table class="data-table admin-table">
+                <table class="data-table admin-table" id="tabla-{{ resource }}">
                     <caption class="sr-only">{{ cfg.title }}</caption>
                     <thead>
                         <tr>
                             {% for field in cfg.fields %}
-                            <th scope="col" {% if field in ('id',) %}class="num"{% endif %}>{{ field|replace('_', ' ')|upper }}</th>
+                            <th scope="col">{{ field|replace('_', ' ')|upper }}</th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -40,14 +41,14 @@
                         {% for row in rows %}
                         <tr>
                             {% for field in cfg.fields %}
-                            <td {% if field == 'id' %}class="num mono"{% endif %}>{{ cell(row, field, resource) }}</td>
+                            <td>{{ cell(row, field, resource, cfg) }}</td>
                             {% endfor %}
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="{{ cfg.fields|length }}" class="text-muted" style="padding:48px;text-align:center">
+                            <td colspan="{{ cfg.fields|length }}" class="text-muted empty-cell">
                                 <strong>Sin registros</strong>
-                                <p>{% if term %}Ningun resultado para “{{ term }}”.{% else %}Crea el primer registro con el boton “+ NUEVO”.{% endif %}</p>
+                                <p>{% if term %}Ningún resultado para “{{ term }}”.{% else %}Crea el primer registro con el botón “+ NUEVO”.{% endif %}</p>
                             </td>
                         </tr>
                         {% endfor %}
@@ -55,13 +56,17 @@
                 </table>
             </div>
 
+            <div class="table-foot">
+                <span class="mono" data-filter-count>{{ meta.total }}</span> REGISTROS
+                {% if term %}· filtrando por “{{ term }}”{% endif %}
+            </div>
+
             {% if meta.pages > 1 %}
-            <nav class="pagination" aria-label="Paginacion">
-                {% set base = request.args.to_dict() %}
+            <nav class="pagination" aria-label="Paginación">
                 {% if meta.page > 1 %}
                 <a class="btn btn--sm" href="{{ url_for('admin.list_resource', resource=resource, q=term, page=meta.page - 1) }}">← ANTERIOR</a>
                 {% endif %}
-                <span class="mono">PAGINA {{ meta.page }} DE {{ meta.pages }} · {{ meta.total }} REGISTROS</span>
+                <span class="mono">PÁGINA {{ meta.page }} DE {{ meta.pages }}</span>
                 {% if meta.page < meta.pages %}
                 <a class="btn btn--sm" href="{{ url_for('admin.list_resource', resource=resource, q=term, page=meta.page + 1) }}">SIGUIENTE →</a>
                 {% endif %}
