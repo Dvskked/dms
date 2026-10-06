@@ -2,23 +2,41 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, timedelta
+from datetime import date
 
-from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
-from sqlalchemy import func
 
 from extensions import db
 from forms import SuggestionForm
 from mailer import notify_staff_new_suggestion
 from models import (
-    Alliance, Article, Category, Division, Donation, DonationChannel, DonationGoal,
-    LiveStream, Match, MatchReport, MuseumItem, Player, PlayerMatchStat, PromotionSlot, Room,
-    RuleEntry, SanctionLevel, Season, SocialLink, StaffMember, Standing, Suggestion,
-    SuggestionStatus, SUGGESTION_CATEGORIES, Team, current_season,
-    division_standings, log_activity, player_stat_rows, setting,
+    Article,
+    Category,
+    Division,
+    Donation,
+    Link,
+    LinkKind,
+    LiveStream,
+    Match,
+    MatchReport,
+    MuseumItem,
+    Player,
+    Regulation,
+    Role,
+    Room,
+    SUGGESTION_CATEGORIES,
+    Suggestion,
+    SuggestionStatus,
+    Team,
+    User,
+    division_standings,
+    donation_goal,
+    log_activity,
+    player_stat_rows,
+    stat_leaders,
 )
-from utils import excerpt, nulls_last, rich_text
+from utils import nulls_last, rich_text
 
 bp = Blueprint("site", __name__)
 
@@ -27,34 +45,49 @@ bp = Blueprint("site", __name__)
 # Consultas reutilizables
 # --------------------------------------------------------------------------- #
 def published(kind: str, limit: int | None = None):
+    """Articulos publicados de un tipo, con los fijados arriba."""
     q = (
         Article.query.filter_by(kind=kind, is_published=True)
-        .order_by(Article.is_pinned.desc(), Article.published_at.desc())
+        .order_by(Article.is_pinned.desc(), *nulls_last(Article.published_at, descending=False))
     )
     return q.limit(limit) if limit else q.all()
 
 
-def current_division() -> Division | None:
-    season = current_season()
-    if not season:
-        return Division.query.order_by(Division.level).first()
-    return season.divisions[0] if season.divisions else Division.query.order_by(Division.level).first()
+def active_divisions() -> list[Division]:
+    return Division.query.order_by(Division.level, Division.name).all()
 
 
-def stat_leaders(team_ids, column: str, order: str = "desc", limit: int = 10):
-    if not list(team_ids):
-        return []
-    q = (
-        Player.query.filter(Player.team_id.in_(list(team_ids)), Player.is_active.is_(True))
-        .order_by(getattr(Player, column).desc() if order == "desc" else getattr(Player, column).asc())
+def staff_members() -> list[User]:
+    """El equipo de administracion vive en ``users`` (columnas publicas)."""
+    return (
+        User.query.filter(
+            User.is_public.is_(True),
+            User.is_active_account.is_(True),
+            User.role.in_(Role.TEAM),
+        )
+        .order_by(User.is_leader.desc(), User.sort_order, User.display_name)
+        .all()
     )
-    return q.limit(limit).all()
+
+
+def links_of(kind: str, active_only: bool = True):
+    """Alianzas, redes o metodos de donacion (todos en ``links``)."""
+    q = Link.query.filter_by(kind=kind)
+    if active_only:
+        q = q.filter_by(is_active=True)
+    return q.order_by(Link.sort_order, Link.label).all()
+
+
+def group_by(rows, attr: str) -> dict:
+    """Agrupa filas por el valor de un atributo (para los bloques de la home)."""
+    out: dict = defaultdict(list)
+    for row in rows:
+        out[getattr(row, attr) or "liga"].append(row)
+    return dict(out)
 
 
 def division_bundle(division: Division) -> dict:
     """Todo el contenido que necesita una division en las pestanas de LIGA."""
-    team_ids = [t.id for t in Team.query.filter_by(division_id=division.id).order_by(Team.sort_order, Team.name).all()]
-
     matches = (
         Match.query.filter_by(division_id=division.id)
         .order_by(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff)
@@ -70,14 +103,17 @@ def division_bundle(division: Division) -> dict:
         dates = [m.played_on for m in items if m.played_on]
         if dates:
             lo, hi = min(dates), max(dates)
-            rango = f"{lo.strftime('%d/%m')} · {hi.strftime('%d/%m')}" if lo != hi else lo.strftime("%d/%m/%Y")
+            rango = f"{lo:%d/%m} · {hi:%d/%m}" if lo != hi else f"{lo:%d/%m/%Y}"
         else:
             rango = "Fecha por definir"
         calendar.append({"journey": journey, "matches": items, "range": rango})
 
     rows = division_standings(division.id)
-    teams = Team.query.filter_by(division_id=division.id, is_active=True).order_by(Team.sort_order, Team.name).all()
-
+    teams = (
+        Team.query.filter_by(division_id=division.id, is_active=True)
+        .order_by(Team.sort_order, Team.name)
+        .all()
+    )
     stats = player_stat_rows(division_id=division.id)
 
     return {
@@ -85,10 +121,13 @@ def division_bundle(division: Division) -> dict:
         "teams": teams,
         "calendar": calendar,
         "standings": rows,
-        "scorers": stat_leaders(team_ids, "goals"),
-        "assistants": stat_leaders(team_ids, "assists"),
-        "keepers": stat_leaders(team_ids, "clean_sheets"),
-        "own_goalers": stat_leaders(team_ids, "own_goals", order="asc", limit=8),
+        "phases": division.phases,
+        "base_rules": division.base_rules,
+        "moves": division.moves,
+        "scorers": stat_leaders(division.id, "goals"),
+        "assistants": stat_leaders(division.id, "assists"),
+        "keepers": stat_leaders(division.id, "clean_sheets"),
+        "own_goalers": stat_leaders(division.id, "own_goals", order="asc", limit=8),
         "players": stats,
         "total_matches": len(matches),
         "goals_total": sum(s.goals or 0 for s in stats),
@@ -96,62 +135,67 @@ def division_bundle(division: Division) -> dict:
     }
 
 
-def published_articles(kind: str):
-    return published(kind)
-
-
 # --------------------------------------------------------------------------- #
 # Pagina principal (unica, con anclas por seccion del header)
 # --------------------------------------------------------------------------- #
 @bp.route("/")
 def index():
-    season = current_season()
-    divisions = Division.query.order_by(Division.level).all() if season else []
-    division = divisions[0] if divisions else None
+    divisions = active_divisions()
+    divisions_data = [division_bundle(d) for d in divisions]
 
     rooms = Room.query.filter_by(is_open=True).order_by(Room.sort_order, Room.code).all()
     museum = (
-        MuseumItem.query.order_by(MuseumItem.sort_order, *nulls_last(MuseumItem.awarded_on), MuseumItem.id.desc())
+        MuseumItem.query.order_by(MuseumItem.sort_order, *nulls_last(MuseumItem.awarded_on),
+                                  MuseumItem.id.desc())
         .all()
     )
     news = published(Category.NEWS)
     announcements = published(Category.ANNOUNCEMENT)
     reports = published(Category.REPORT)
 
-    alliances = Alliance.query.order_by(Alliance.sort_order, Alliance.name).all()
+    alliances = links_of(LinkKind.ALLIANCE, active_only=False)
     featured_alliance = next((a for a in alliances if a.is_featured), None)
 
-    socials = (
-        SocialLink.query.filter_by(is_active=True).order_by(SocialLink.owner, SocialLink.sort_order).all()
-    )
-    socials_by_owner = defaultdict(list)
-    for link in socials:
-        socials_by_owner[link.owner].append(link)
+    socials = links_of(LinkKind.SOCIAL)
+    socials_by_owner = group_by(socials, "group")
 
-    staff = StaffMember.query.filter_by(is_active=True).order_by(StaffMember.is_leader.desc(), StaffMember.sort_order).all()
+    staff = staff_members()
 
     live_streams = (
-        LiveStream.query.order_by(LiveStream.is_live.desc(), LiveStream.is_featured.desc(), LiveStream.sort_order)
+        LiveStream.query.order_by(LiveStream.is_live.desc(), LiveStream.is_featured.desc(),
+                                  LiveStream.sort_order)
         .all()
     )
-    featured_live = next((s for s in live_streams if s.is_live and s.is_featured), None) \
+    featured_live = (
+        next((s for s in live_streams if s.is_live and s.is_featured), None)
         or next((s for s in live_streams if s.is_live), None)
-
-    donation_channels = (
-        DonationChannel.query.filter_by(is_active=True).order_by(DonationChannel.sort_order).all()
     )
-    donation_goal = DonationGoal.query.filter_by(is_active=True).first()
-    donations = Donation.query.filter_by(is_public=True).order_by(Donation.donated_at.desc()).limit(8).all()
 
-    divisions_data = [division_bundle(d) for d in divisions]
+    donation_channels = links_of(LinkKind.DONATION)
+    goal = donation_goal()
+    donations = (
+        Donation.query.filter_by(is_public=True).order_by(Donation.donated_at.desc()).limit(8).all()
+    )
 
     rules = (
-        RuleEntry.query.filter_by(scope="discord").order_by(RuleEntry.position).all()
-        + RuleEntry.query.filter_by(scope="comunidad").order_by(RuleEntry.position).all()
+        Regulation.query.filter(Regulation.scope.in_(("discord", "comunidad")))
+        .order_by(Regulation.scope, Regulation.position)
+        .all()
     )
-    sanctions = SanctionLevel.query.order_by(SanctionLevel.sort_order).all()
+    sanctions = (
+        Regulation.query.filter_by(scope="sanciones").order_by(Regulation.position).all()
+    )
 
     today = date.today()
+    next_match = (
+        Match.query.filter(
+            Match.played_on.isnot(None),
+            Match.played_on >= today,
+            Match.status.in_((Match.SCHEDULED, Match.LIVE)),
+        )
+        .order_by(Match.played_on, Match.kickoff)
+        .first()
+    )
     stats = {
         "teams": Team.query.filter_by(is_active=True).count(),
         "rooms": len(rooms),
@@ -159,18 +203,15 @@ def index():
         "matches": Match.query.count(),
         "players": Player.query.filter_by(is_active=True).count(),
         "members": len(staff),
-        "next_match": (
-            Match.query.filter(
-                Match.played_on.isnot(None), Match.played_on >= today, Match.status.in_(("scheduled", "live"))
-            ).order_by(Match.played_on, Match.kickoff).first()
-        ),
+        "next_match": next_match,
     }
 
     return render_template(
         "site/index.html",
-        season=season,
         divisions=divisions,
-        division=division,
+        division=divisions[0] if divisions else None,
+        divisions_data=divisions_data,
+        teams=divisions_data[0]["teams"] if divisions_data else [],
         rooms=rooms,
         museum=museum,
         museum_categories=MuseumItem.CATEGORIES,
@@ -181,28 +222,26 @@ def index():
         alliances=alliances,
         featured_alliance=featured_alliance,
         socials=socials,
-        socials_by_owner=dict(socials_by_owner),
+        socials_by_owner=socials_by_owner,
         staff=staff,
         live_streams=live_streams,
         featured_live=featured_live,
         donation_channels=donation_channels,
-        donation_goal=donation_goal,
+        donation_goal=goal,
         donations=donations,
-        divisions_data=divisions_data,
         rules=rules,
         sanctions=sanctions,
         stats=stats,
-        teams=divisions_data[0]["teams"] if divisions_data else [],
-        awards=MuseumItem.query.filter(MuseumItem.category == "premios").order_by(MuseumItem.sort_order).all(),
-        champions=MuseumItem.query.filter(MuseumItem.category == "campeones").order_by(MuseumItem.sort_order).all(),
-        rankings=MuseumItem.query.filter(MuseumItem.category == "rankings").order_by(MuseumItem.sort_order).all(),
+        awards=[m for m in museum if m.category == "premios"],
+        champions=[m for m in museum if m.category == "campeones"],
+        rankings=[m for m in museum if m.category == "rankings"],
         today=today,
-        site_stats=dict(
-            rooms_open=len(rooms),
-            museum_total=len(museum),
-            socials_total=len(socials),
-            live_total=len(live_streams),
-        ),
+        site_stats={
+            "rooms_open": len(rooms),
+            "museum_total": len(museum),
+            "socials_total": len(socials),
+            "live_total": len(live_streams),
+        },
     )
 
 
@@ -211,16 +250,18 @@ def index():
 # --------------------------------------------------------------------------- #
 @bp.route("/noticias/<slug>")
 def article_detail(slug: str):
-    item = Article.query.filter_by(slug=slug, is_published=True).first_or_404()
-    if not item.is_live_now and item.id != getattr(current_user, "id", None):
-        pass
+    item = Article.query.filter_by(slug=slug).first_or_404()
+    if not item.is_live_now and not current_user.is_staff:
+        abort(404)
     item.views = (item.views or 0) + 1
     db.session.commit()
     related = (
-        Article.query.filter(Article.kind == item.kind, Article.id != item.id, Article.is_published.is_(True))
-        .order_by(Article.published_at.desc()).limit(3).all()
+        Article.query.filter(Article.kind == item.kind, Article.id != item.id,
+                             Article.is_published.is_(True))
+        .order_by(*nulls_last(Article.published_at, descending=False)).limit(3).all()
     )
-    return render_template("site/article.html", item=item, body=rich_text(item.body or ""), related=related)
+    return render_template("site/article.html", item=item,
+                           body=rich_text(item.body or ""), related=related)
 
 
 # --------------------------------------------------------------------------- #
@@ -230,11 +271,11 @@ def article_detail(slug: str):
 def live_room(stream_id: int):
     stream = db.session.get(LiveStream, stream_id) or abort(404)
     others = (
-        LiveStream.query.filter(LiveStream.id != stream.id).order_by(LiveStream.is_live.desc(), LiveStream.sort_order).limit(6).all()
+        LiveStream.query.filter(LiveStream.id != stream.id)
+        .order_by(LiveStream.is_live.desc(), LiveStream.sort_order).limit(6).all()
     )
     upcoming = (
-        Match.query
-        .filter(Match.played_on >= date.today())
+        Match.query.filter(Match.played_on >= date.today())
         .order_by(*nulls_last(Match.played_on, descending=False), Match.kickoff)
         .limit(6).all()
     )
@@ -251,27 +292,21 @@ def match_report(pk: int):
     report = match.report
 
     if report is not None and not report.is_published and not current_user.is_staff:
-        # Solo el staff ve borradores; un jugador registrado tampoco.
         abort(404)
-
-    home_stats = match.stats_for(match.home_team_id)
-    away_stats = match.stats_for(match.away_team_id)
 
     journey_matches = (
         Match.query.filter_by(division_id=match.division_id, journey=match.journey)
-        .order_by(Match.kickoff)
-        .all()
+        .order_by(Match.kickoff).all()
     )
-    others = [m for m in journey_matches if m.id != match.id]
 
     return render_template(
         "site/match_report.html",
         match=match,
         report=report,
-        home_stats=home_stats,
-        away_stats=away_stats,
+        home_stats=match.stats_for(match.home_team_id),
+        away_stats=match.stats_for(match.away_team_id),
         scorers=match.scorers,
-        others=others,
+        others=[m for m in journey_matches if m.id != match.id],
         computed=(match.home_goals_from_stats, match.away_goals_from_stats),
     )
 
@@ -282,39 +317,41 @@ def match_report(pk: int):
 @bp.route("/estadisticas")
 def stats():
     """Tabla de las divisiones y tabla de estadisticas individuales."""
-    season = current_season()
-    divisions = (
-        Division.query.filter_by(season_id=season.id).order_by(Division.level).all()
-        if season else []
-    )
+    divisions = active_divisions()
     tables = [
         {
             "division": division,
             "standings": division_standings(division.id),
-            "teams": Team.query.filter_by(division_id=division.id, is_active=True)
-                             .order_by(Team.sort_order, Team.name).all(),
+            "teams": (
+                Team.query.filter_by(division_id=division.id, is_active=True)
+                .order_by(Team.sort_order, Team.name).all()
+            ),
             "players": player_stat_rows(division_id=division.id),
-            "calendar": Match.query.filter_by(division_id=division.id)
-                                   .order_by(Match.journey.desc()).limit(6).all(),
+            "calendar": (
+                Match.query.filter_by(division_id=division.id)
+                .order_by(Match.journey.desc()).limit(6).all()
+            ),
         }
         for division in divisions
     ]
     return render_template(
         "site/stats.html",
-        season=season,
         divisions=divisions,
         tables=tables,
-        scorers=player_stat_rows(limit=15, season_id=season.id if season else None),
+        scorers=player_stat_rows(limit=15),
         recent_reports=(
             Match.query.join(MatchReport, MatchReport.match_id == Match.id)
             .filter(MatchReport.is_published.is_(True))
-            .order_by(*nulls_last(Match.played_on))
+            .order_by(*nulls_last(Match.played_on, descending=False))
             .limit(6)
             .all()
         ),
     )
 
 
+# --------------------------------------------------------------------------- #
+# Sugerencias: canal de la comunidad con votos en una sola columna
+# --------------------------------------------------------------------------- #
 @bp.route("/sugerencias", methods=["GET", "POST"])
 @login_required
 def suggestions():
@@ -334,7 +371,6 @@ def suggestions():
                      f"{suggestion.category_label}: {suggestion.title}")
         db.session.commit()
 
-        # Aviso al staff por correo: aviso al canal de sugerencias.
         notify_staff_new_suggestion(suggestion, current_user)
         flash("Gracias por opinar. Tu sugerencia ya esta en el canal del staff.", "success")
         return redirect(url_for("site.suggestions"))
@@ -364,28 +400,16 @@ def suggestions():
 @bp.route("/sugerencias/<int:pk>/voto", methods=["POST"])
 @login_required
 def suggestion_like(pk: int):
-    """Un voto por usuario y sugerencia (se controla con la tabla de votos)."""
+    """Un voto por usuario y sugerencia (los ids guardados en ``voted_by``)."""
     suggestion = db.session.get(Suggestion, pk) or abort(404)
-    from models import SuggestionVote
-
-    existing = SuggestionVote.query.filter_by(
-        suggestion_id=suggestion.id, user_id=current_user.id
-    ).first()
-    if existing:
-        db.session.delete(existing)
-        suggestion.likes = max((suggestion.likes or 1) - 1, 0)
-        liked = False
-    else:
-        db.session.add(SuggestionVote(suggestion_id=suggestion.id, user_id=current_user.id))
-        suggestion.likes = (suggestion.likes or 0) + 1
-        liked = True
+    liked = suggestion.toggle_vote(current_user.id)
     db.session.commit()
     flash("Voto registrado." if liked else "Voto quitado.", "info")
     return redirect(request.referrer or url_for("site.suggestions"))
 
 
 # --------------------------------------------------------------------------- #
-# API ligera para el JS (filtros y calificacion en vivo)
+# API ligera para el JS (filtros del calendario)
 # --------------------------------------------------------------------------- #
 @bp.route("/api/matches")
 def api_matches():
@@ -396,7 +420,10 @@ def api_matches():
         q = q.filter_by(division_id=division_id)
     if journey:
         q = q.filter_by(journey=journey)
-    rows = q.order_by(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff).limit(200).all()
+    rows = (
+        q.order_by(Match.journey, *nulls_last(Match.played_on, descending=False), Match.kickoff)
+        .limit(200).all()
+    )
     return {
         "matches": [
             {
@@ -409,6 +436,7 @@ def api_matches():
                 "away": m.away_team.name if m.away_team else "Por definir",
                 "score": m.score_text,
                 "status": m.status,
+                "status_label": m.status_label,
             }
             for m in rows
         ]

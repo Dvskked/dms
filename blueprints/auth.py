@@ -153,7 +153,15 @@ def logout():
 @bp.route("/perfil", methods=["GET", "POST"])
 @login_required
 def profile():
-    form = ProfileForm(obj=current_user)
+    # Sin ``obj=`` a proposito: los campos de imagen se rellenan por separado.
+    form = ProfileForm(data={
+        "display_name": current_user.display_name or "",
+        "email": current_user.email or "",
+        "haxball_id": current_user.haxball_id or "",
+        "country": current_user.country or "",
+        "bio": current_user.bio or "",
+        "avatar_url": current_user.image_url or "",
+    })
     if form.validate_on_submit():
         user = current_user
         email = (form.email.data or "").strip().lower()
@@ -164,13 +172,19 @@ def profile():
             return render_template("auth/profile.html", form=form)
 
         if form.avatar.data:
-            new_path = save_upload(form.avatar.data, subfolder="avatars")
+            try:
+                new_path = save_upload(form.avatar.data, subfolder="avatars")
+            except ValueError as exc:
+                flash(str(exc), "error")
+                return render_template("auth/profile.html", form=form)
             if new_path:
-                delete_upload(user.avatar)
-                user.avatar = new_path
-        if form.remove_avatar.data:
-            delete_upload(user.avatar)
-            user.avatar = None
+                delete_upload(user.image)
+                user.set_picture(new_path, None)
+        elif form.remove_avatar.data:
+            delete_upload(user.image)
+            user.set_picture(None, None)
+        else:
+            user.image_url = (form.avatar_url.data or "").strip() or None
 
         user.display_name = (form.display_name.data or "").strip() or user.username
         user.email = email or user.email
